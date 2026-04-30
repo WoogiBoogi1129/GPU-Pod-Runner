@@ -61,6 +61,19 @@ npm run compile
 npm test
 ```
 
+## 동작 확인용 PyTorch 예제
+
+- `examples/cnn_gpu_smoke_test.py`
+- 외부 데이터셋 다운로드 없이 합성 이미지로 작은 CNN을 학습합니다
+- `torch.cuda.*` 호출이 포함되어 있어 GPU Runner 감지 실험에 적합합니다
+
+실험 방법:
+
+1. VS Code에서 `examples/cnn_gpu_smoke_test.py`를 연다
+2. `Ctrl+Shift+G` 또는 `GPU Runner: Run File`을 실행한다
+3. `always-ask` 모드면 GPU Pod 실행을 선택한다
+4. OutputChannel에서 epoch 로그와 `Selected device: cuda` 출력 여부를 확인한다
+
 개발용 Extension Host 실행:
 
 1. VS Code에서 이 폴더를 연다
