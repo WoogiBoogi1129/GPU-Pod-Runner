@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as k8s from "@kubernetes/client-node";
@@ -75,6 +76,26 @@ export function buildManagedConfigMapName(sourceName: string): string {
 
 export function buildConfigMapNameForPod(podName: string): string {
   return `${podName}-cm`;
+}
+
+export function normalizeKubeApiServerUrl(server: string, tlsServerName?: string): string {
+  const normalizedTlsServerName = tlsServerName?.trim();
+  if (!normalizedTlsServerName) {
+    return server;
+  }
+
+  let parsedServer: URL;
+  try {
+    parsedServer = new URL(server);
+  } catch {
+    return server;
+  }
+
+  if (!isLoopbackHost(parsedServer.hostname) || isLoopbackHost(normalizedTlsServerName)) {
+    return server;
+  }
+
+  return buildUrlWithHost(server, parsedServer, normalizedTlsServerName);
 }
 
 export function buildGpuResourceRequirements(config: GPURunnerConfig): k8s.V1ResourceRequirements {
@@ -198,7 +219,7 @@ export class PodManager {
   constructor(config: GPURunnerConfig) {
     this.config = config;
     this.kubeConfig = new k8s.KubeConfig();
-    this.coreApi = this.kubeConfig.makeApiClient(k8s.CoreV1Api);
+    this.coreApi = {} as k8s.CoreV1Api;
     this.updateConfig(config);
   }
 
@@ -211,6 +232,11 @@ export class PodManager {
 
     this.kubeConfig = new k8s.KubeConfig();
     this.kubeConfig.loadFromFile(kubeconfigPath);
+    const cluster = this.kubeConfig.getCurrentCluster();
+    if (cluster) {
+      const normalizedServer = normalizeKubeApiServerUrl(cluster.server, cluster.tlsServerName);
+      (cluster as { server: string }).server = normalizedServer;
+    }
     this.coreApi = this.kubeConfig.makeApiClient(k8s.CoreV1Api);
   }
 
@@ -389,6 +415,23 @@ function expandHomeDir(inputPath: string): string {
   }
 
   return path.join(os.homedir(), inputPath.slice(1));
+}
+
+function buildUrlWithHost(originalUrl: string, parsedUrl: URL, host: string): string {
+  const auth =
+    parsedUrl.username || parsedUrl.password
+      ? `${parsedUrl.username}${parsedUrl.password ? `:${parsedUrl.password}` : ""}@`
+      : "";
+  const normalizedHost = net.isIPv6(host) && !host.startsWith("[") ? `[${host}]` : host;
+  const port = parsedUrl.port ? `:${parsedUrl.port}` : "";
+  const path = parsedUrl.pathname === "/" && !originalUrl.endsWith("/") ? "" : parsedUrl.pathname;
+
+  return `${parsedUrl.protocol}//${auth}${normalizedHost}${port}${path}${parsedUrl.search}${parsedUrl.hash}`;
+}
+
+function isLoopbackHost(host: string): boolean {
+  const normalizedHost = host.trim().replace(/^\[(.*)\]$/, "$1").toLowerCase();
+  return normalizedHost === "127.0.0.1" || normalizedHost === "::1" || normalizedHost === "localhost";
 }
 
 function delay(ms: number): Promise<void> {

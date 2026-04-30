@@ -9,6 +9,6 @@
   "gpuRunner.podTimeoutSeconds": 600,
   "gpuRunner.autoDetect": true,
   "gpuRunner.autoDetectPrompt": "always-ask",
-  "gpuRunner.kubeconfigPath": "",
+  "gpuRunner.kubeconfigPath": "C:\\.kube\\config",
   "gpuRunner.apiServerUrl": ""
 }

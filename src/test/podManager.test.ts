@@ -6,6 +6,7 @@ import {
   buildPodManifest,
   buildSelectionConfigMapManifest,
   mapWorkspaceFileToPodPath,
+  normalizeKubeApiServerUrl,
   type SelectionTarget,
   type WorkspaceFileTarget
 } from "../podManager";
@@ -51,6 +52,18 @@ test("builds HAMi GPU memory resource requirements when enabled", () => {
 
   assert.equal(resources.limits?.["nvidia.com/gpumem"], "12000");
   assert.equal(resources.requests?.["nvidia.com/gpumem"], "12000");
+});
+
+test("rewrites loopback kube API servers to the TLS server name", () => {
+  const normalized = normalizeKubeApiServerUrl("https://127.0.0.1:6443", "172.168.28.244");
+
+  assert.equal(normalized, "https://172.168.28.244:6443");
+});
+
+test("keeps non-loopback kube API servers unchanged", () => {
+  const normalized = normalizeKubeApiServerUrl("https://10.96.0.1:6443", "172.168.28.244");
+
+  assert.equal(normalized, "https://10.96.0.1:6443");
 });
 
 test("builds pod manifests for workspace files", () => {
