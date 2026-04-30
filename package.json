@@ -1,0 +1,181 @@
+{
+  "name": "gpu-pod-runner",
+  "displayName": "GPU Pod Runner",
+  "description": "Detect GPU-oriented Python code and run it in Kubernetes GPU Pods.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:gpu-runner.runFile",
+    "onCommand:gpu-runner.runSelection",
+    "onCommand:gpu-runner.showStatus",
+    "onCommand:gpu-runner.cleanup"
+  ],
+  "main": "./dist/extension.js",
+  "files": [
+    "dist/**/*",
+    "k8s/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "gpu-runner.runFile",
+        "title": "GPU Runner: Run File",
+        "category": "GPU Runner"
+      },
+      {
+        "command": "gpu-runner.runSelection",
+        "title": "GPU Runner: Run Selection",
+        "category": "GPU Runner"
+      },
+      {
+        "command": "gpu-runner.showStatus",
+        "title": "GPU Runner: Show Status",
+        "category": "GPU Runner"
+      },
+      {
+        "command": "gpu-runner.cleanup",
+        "title": "GPU Runner: Cleanup Managed Pods",
+        "category": "GPU Runner"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "gpu-runner.runFile",
+        "key": "ctrl+shift+g",
+        "when": "editorTextFocus && editorLangId == python"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "gpu-runner.runSelection",
+          "when": "editorLangId == python && editorHasSelection",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "gpu-runner.runFile"
+        },
+        {
+          "command": "gpu-runner.runSelection"
+        },
+        {
+          "command": "gpu-runner.showStatus"
+        },
+        {
+          "command": "gpu-runner.cleanup"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "GPU Runner",
+      "properties": {
+        "gpuRunner.namespace": {
+          "type": "string",
+          "default": "ml-dev",
+          "description": "Namespace where GPU Pods are created."
+        },
+        "gpuRunner.image": {
+          "type": "string",
+          "default": "pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime",
+          "description": "Container image used for GPU Pod execution."
+        },
+        "gpuRunner.useHAMi": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use HAMi fractional GPU resource requests."
+        },
+        "gpuRunner.gpuMemoryMB": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 1,
+          "description": "Requested GPU memory in MB when HAMi mode is enabled."
+        },
+        "gpuRunner.gpuCount": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "description": "Number of whole GPUs requested when HAMi mode is disabled."
+        },
+        "gpuRunner.pvcName": {
+          "type": "string",
+          "default": "shared-workspace-pvc",
+          "description": "ReadWriteMany PVC used to mount the shared workspace."
+        },
+        "gpuRunner.workspaceMountPath": {
+          "type": "string",
+          "default": "/workspace",
+          "description": "Mount path of the shared workspace inside the Pod."
+        },
+        "gpuRunner.podTimeoutSeconds": {
+          "type": "number",
+          "default": 600,
+          "minimum": 30,
+          "description": "Maximum time to wait for Pod completion in seconds."
+        },
+        "gpuRunner.autoDetect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic GPU code scanning on save."
+        },
+        "gpuRunner.autoDetectPrompt": {
+          "type": "string",
+          "default": "always-ask",
+          "enum": [
+            "always-ask",
+            "auto-gpu",
+            "auto-local"
+          ],
+          "enumDescriptions": [
+            "Show a prompt when high-confidence GPU code is detected.",
+            "Automatically run detected GPU code in a GPU Pod.",
+            "Always run locally even if GPU code is detected."
+          ],
+          "description": "How the extension reacts when GPU code is detected."
+        },
+        "gpuRunner.kubeconfigPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional kubeconfig path. When empty, ~/.kube/config is used."
+        },
+        "gpuRunner.apiServerUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Reserved for a future backend API mode. v1 does not use this setting."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "check-types": "tsc --noEmit",
+    "compile": "npm run check-types && node ./esbuild.js",
+    "watch": "node ./esbuild.js --watch",
+    "pretest": "npm run compile",
+    "test": "npm run test:unit",
+    "test:unit": "tsx --test src/test/**/*.test.ts",
+    "package:vsix": "vsce package --allow-missing-repository"
+  },
+  "dependencies": {
+    "@kubernetes/client-node": "^0.22.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.3.2",
+    "esbuild": "^0.25.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
