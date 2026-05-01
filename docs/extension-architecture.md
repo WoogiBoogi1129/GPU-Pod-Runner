@@ -34,7 +34,52 @@
    - ServiceAccount/RBAC, 공유 PVC 같은 실행 기반을 제공한다.
    - 관련 파일: `k8s/rbac.yaml`, `k8s/shared-pvc.yaml`
 
-간단한 흐름은 아래와 같다.
+시각화하면 전체 구조는 아래와 같다.
+
+```mermaid
+flowchart TB
+  user[사용자<br/>VS Code 명령 실행]
+
+  subgraph extLayer[VS Code Extension]
+    ext[extension.ts<br/>명령 등록 / 오케스트레이션]
+    cfg[config.ts<br/>설정 로딩]
+    detect[gpuDetector.ts<br/>GPU 패턴 감지]
+    decide[runnerDecisions.ts<br/>local / gpu / prompt 결정]
+    ui[statusBar.ts<br/>상태바 / 패널 / 실행 프롬프트]
+    local[로컬 Python 실행]
+  end
+
+  subgraph k8sLayer[Kubernetes 연동]
+    podMgr[podManager.ts<br/>Pod / ConfigMap 생성, 상태 대기, 로그 수집, 정리]
+    pod[GPU Pod]
+    cm[ConfigMap<br/>selection 실행 시]
+  end
+
+  subgraph clusterLayer[클러스터 실행 기반]
+    pvc[공유 PVC<br/>workspace 파일 접근]
+    rbac[ServiceAccount / RBAC]
+  end
+
+  user --> ext
+  ext --> cfg
+  ext --> detect
+  detect --> decide
+  ext <--> ui
+
+  decide -->|local| local
+  decide -->|gpu| podMgr
+  decide -->|prompt| ui
+  ui -->|GPU 실행 선택| podMgr
+  ui -->|로컬 실행 선택| local
+
+  podMgr --> pod
+  podMgr --> cm
+  podMgr --> pvc
+  podMgr --> rbac
+  pod -->|실행 결과 / 로그| ui
+```
+
+텍스트로 보면 주요 실행 흐름은 아래와 같다.
 
 ```text
 사용자 명령 실행
