@@ -6,7 +6,7 @@ metadata:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: gpu-runner-sa
+  name: gpu-runner-ide
   namespace: ml-dev
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -24,6 +24,9 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
+    verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -32,7 +35,7 @@ metadata:
   namespace: ml-dev
 subjects:
   - kind: ServiceAccount
-    name: gpu-runner-sa
+    name: gpu-runner-ide
     namespace: ml-dev
 roleRef:
   apiGroup: rbac.authorization.k8s.io

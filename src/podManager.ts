@@ -3,7 +3,7 @@ import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as k8s from "@kubernetes/client-node";
-import type { GPURunnerConfig } from "./config";
+import type { AuthMode, GPURunnerConfig } from "./config";
 
 const MANAGED_BY_LABEL_KEY = "managed-by";
 const MANAGED_BY_LABEL_VALUE = "vscode-gpu-runner";
@@ -13,7 +13,21 @@ const SOURCE_PATH_ANNOTATION_KEY = "gpu-runner/source-path";
 const SELECTION_VOLUME_NAME = "selection-script";
 const SELECTION_MOUNT_PATH = "/opt/gpu-runner";
 const SELECTION_FILE_NAME = "selection.py";
-const SERVICE_ACCOUNT_NAME = "gpu-runner-sa";
+const SERVICE_ACCOUNT_ROOT = "/var/run/secrets/kubernetes.io/serviceaccount";
+const SERVICE_ACCOUNT_NAMESPACE_FILE = path.join(SERVICE_ACCOUNT_ROOT, "namespace");
+const SERVICE_ACCOUNT_TOKEN_FILE = path.join(SERVICE_ACCOUNT_ROOT, "token");
+
+const REQUIRED_PERMISSION_CHECKS: PermissionCheckTarget[] = [
+  { verb: "get", resource: "pods" },
+  { verb: "list", resource: "pods" },
+  { verb: "create", resource: "pods" },
+  { verb: "delete", resource: "pods" },
+  { verb: "get", resource: "pods", subresource: "log" },
+  { verb: "get", resource: "configmaps" },
+  { verb: "list", resource: "configmaps" },
+  { verb: "create", resource: "configmaps" },
+  { verb: "delete", resource: "configmaps" }
+];
 
 export interface WorkspaceFileTarget {
   kind: "workspace-file";
@@ -46,8 +60,51 @@ export interface ManagedPodSummary {
   sourcePath?: string;
 }
 
+export type ResolvedAuthMode = "in-cluster" | "kubeconfig";
+
+export interface DiscoveredClusterContext {
+  namespace?: string;
+  currentPodName?: string;
+  currentServiceAccountName?: string;
+  pvcName?: string;
+  warnings: string[];
+}
+
+export interface PermissionCheckTarget {
+  verb: string;
+  resource: string;
+  subresource?: string;
+}
+
+export interface PermissionCheckResult extends PermissionCheckTarget {
+  allowed: boolean;
+  reason?: string;
+}
+
+export interface PermissionReport {
+  namespace: string;
+  serviceAccountName?: string;
+  checks: PermissionCheckResult[];
+  warnings: string[];
+}
+
+export interface PodManagerRuntimeState {
+  authMode: ResolvedAuthMode;
+  discoveredContext?: DiscoveredClusterContext;
+  permissionReport?: PermissionReport;
+  warnings: string[];
+}
+
+interface KubernetesClients {
+  authMode: ResolvedAuthMode;
+  kubeConfig: k8s.KubeConfig;
+  coreApi: k8s.CoreV1Api;
+  authorizationApi: k8s.AuthorizationV1Api;
+  warnings: string[];
+}
+
 export function toPosixPath(inputPath: string): string {
-  return inputPath.split(path.sep).join(path.posix.sep);
+  return inputPath.replace(/\\/g, "/").split(path.sep).join(path.posix.sep);
 }
 
 export function mapWorkspaceFileToPodPath(
@@ -55,8 +112,9 @@ export function mapWorkspaceFileToPodPath(
   filePath: string,
   workspaceMountPath: string
 ): string {
-  const relativePath = path.relative(workspaceRoot, filePath);
-  if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+  const pathModule = looksLikeWindowsPath(workspaceRoot) || looksLikeWindowsPath(filePath) ? path.win32 : path;
+  const relativePath = pathModule.relative(workspaceRoot, filePath);
+  if (!relativePath || relativePath.startsWith("..") || pathModule.isAbsolute(relativePath)) {
     throw new Error("The selected file must live inside the current workspace.");
   }
 
@@ -131,6 +189,66 @@ export function buildSelectionConfigMapManifest(
   };
 }
 
+export function resolveAuthStrategy(
+  authMode: AuthMode,
+  isInsideCluster: boolean
+): ResolvedAuthMode {
+  if (authMode === "in-cluster") {
+    return "in-cluster";
+  }
+
+  if (authMode === "kubeconfig") {
+    return "kubeconfig";
+  }
+
+  return isInsideCluster ? "in-cluster" : "kubeconfig";
+}
+
+export function isInClusterEnvironment(
+  environment: NodeJS.ProcessEnv = process.env,
+  serviceAccountNamespaceFile = SERVICE_ACCOUNT_NAMESPACE_FILE,
+  serviceAccountTokenFile = SERVICE_ACCOUNT_TOKEN_FILE
+): boolean {
+  return Boolean(environment.KUBERNETES_SERVICE_HOST)
+    && fs.existsSync(serviceAccountNamespaceFile)
+    && fs.existsSync(serviceAccountTokenFile);
+}
+
+export function discoverPersistentVolumeClaimName(
+  pod: k8s.V1Pod,
+  workspaceMountPath: string
+): string | undefined {
+  const containers = pod.spec?.containers ?? [];
+  const volumeName = containers
+    .flatMap((container) => container.volumeMounts ?? [])
+    .find((mount) => mount.mountPath === workspaceMountPath)
+    ?.name;
+
+  if (!volumeName) {
+    return undefined;
+  }
+
+  return pod.spec?.volumes?.find((volume) => volume.name === volumeName)?.persistentVolumeClaim?.claimName;
+}
+
+export function applyAutoDiscoveredContext(
+  config: GPURunnerConfig,
+  discovery?: DiscoveredClusterContext
+): GPURunnerConfig {
+  if (!discovery || !config.autoDiscoverClusterContext) {
+    return config;
+  }
+
+  return {
+    ...config,
+    namespace: config.manualOverrides.namespace ? config.namespace : discovery.namespace ?? config.namespace,
+    pvcName: config.manualOverrides.pvcName ? config.pvcName : discovery.pvcName ?? config.pvcName,
+    executionServiceAccountName: config.manualOverrides.executionServiceAccountName
+      ? config.executionServiceAccountName
+      : discovery.currentServiceAccountName ?? config.executionServiceAccountName
+  };
+}
+
 export function buildPodManifest(
   config: GPURunnerConfig,
   target: ExecutionTarget,
@@ -195,7 +313,7 @@ export function buildPodManifest(
     },
     spec: {
       restartPolicy: "Never",
-      serviceAccountName: SERVICE_ACCOUNT_NAME,
+      serviceAccountName: config.executionServiceAccountName || undefined,
       volumes,
       containers: [
         {
@@ -215,29 +333,69 @@ export class PodManager {
   private config: GPURunnerConfig;
   private kubeConfig: k8s.KubeConfig;
   private coreApi: k8s.CoreV1Api;
+  private authorizationApi: k8s.AuthorizationV1Api;
+  private runtimeState: PodManagerRuntimeState;
 
-  constructor(config: GPURunnerConfig) {
+  private constructor(config: GPURunnerConfig) {
     this.config = config;
     this.kubeConfig = new k8s.KubeConfig();
     this.coreApi = {} as k8s.CoreV1Api;
-    this.updateConfig(config);
+    this.authorizationApi = {} as k8s.AuthorizationV1Api;
+    this.runtimeState = {
+      authMode: "kubeconfig",
+      warnings: []
+    };
   }
 
-  updateConfig(config: GPURunnerConfig): void {
-    this.config = config;
-    const kubeconfigPath = resolveKubeconfigPath(config.kubeconfigPath);
-    if (!fs.existsSync(kubeconfigPath)) {
-      throw new Error(`Kubeconfig not found at ${kubeconfigPath}`);
+  static async create(config: GPURunnerConfig): Promise<PodManager> {
+    const manager = new PodManager(config);
+    await manager.updateConfig(config);
+    return manager;
+  }
+
+  getConfig(): GPURunnerConfig {
+    return this.config;
+  }
+
+  getRuntimeState(): PodManagerRuntimeState {
+    return {
+      authMode: this.runtimeState.authMode,
+      discoveredContext: this.runtimeState.discoveredContext,
+      permissionReport: this.runtimeState.permissionReport,
+      warnings: [...this.runtimeState.warnings]
+    };
+  }
+
+  async updateConfig(config: GPURunnerConfig): Promise<void> {
+    const clients = initializeKubernetesClients(config);
+    this.kubeConfig = clients.kubeConfig;
+    this.coreApi = clients.coreApi;
+    this.authorizationApi = clients.authorizationApi;
+
+    let discovery: DiscoveredClusterContext | undefined;
+    const warnings = [...clients.warnings];
+
+    if (config.autoDiscoverClusterContext) {
+      discovery = await discoverCurrentClusterContext(this.coreApi, config.workspaceMountPath);
+      warnings.push(...discovery.warnings);
     }
 
-    this.kubeConfig = new k8s.KubeConfig();
-    this.kubeConfig.loadFromFile(kubeconfigPath);
-    const cluster = this.kubeConfig.getCurrentCluster();
-    if (cluster) {
-      const normalizedServer = normalizeKubeApiServerUrl(cluster.server, cluster.tlsServerName);
-      (cluster as { server: string }).server = normalizedServer;
-    }
-    this.coreApi = this.kubeConfig.makeApiClient(k8s.CoreV1Api);
+    this.config = applyAutoDiscoveredContext(config, discovery);
+
+    const permissionReport = await checkRequiredPermissions(
+      this.authorizationApi,
+      this.config.namespace,
+      this.config.executionServiceAccountName || discovery?.currentServiceAccountName
+    );
+
+    warnings.push(...permissionReport.warnings);
+
+    this.runtimeState = {
+      authMode: clients.authMode,
+      discoveredContext: discovery,
+      permissionReport,
+      warnings
+    };
   }
 
   async createAndRun(target: ExecutionTarget): Promise<ManagedPodRun> {
@@ -401,12 +559,205 @@ export class PodManager {
   }
 }
 
-function resolveKubeconfigPath(configuredPath: string): string {
-  if (configuredPath.trim()) {
-    return expandHomeDir(configuredPath.trim());
+function initializeKubernetesClients(config: GPURunnerConfig): KubernetesClients {
+  const warnings: string[] = [];
+  const isInsideCluster = isInClusterEnvironment();
+  const resolvedAuthMode = resolveAuthStrategy(config.authMode, isInsideCluster);
+  const kubeConfig = new k8s.KubeConfig();
+
+  if (resolvedAuthMode === "in-cluster") {
+    try {
+      kubeConfig.loadFromCluster();
+      normalizeCurrentClusterServer(kubeConfig);
+
+      return {
+        authMode: "in-cluster",
+        kubeConfig,
+        coreApi: kubeConfig.makeApiClient(k8s.CoreV1Api),
+        authorizationApi: kubeConfig.makeApiClient(k8s.AuthorizationV1Api),
+        warnings
+      };
+    } catch (error) {
+      if (config.authMode !== "auto") {
+        throw new Error(`Failed to initialize in-cluster Kubernetes auth: ${toErrorMessage(error)}`);
+      }
+
+      warnings.push(`In-cluster auth failed, falling back to kubeconfig: ${toErrorMessage(error)}`);
+    }
   }
 
-  return path.join(os.homedir(), ".kube", "config");
+  const kubeconfigPath = resolveAvailableKubeconfigPath(config.kubeconfigPath, config.manualOverrides.kubeconfigPath);
+  if (!kubeconfigPath) {
+    throw new Error(
+      "No usable kubeconfig was found. Set gpuRunner.kubeconfigPath or run the extension inside a Kubernetes Pod."
+    );
+  }
+
+  kubeConfig.loadFromFile(kubeconfigPath);
+  normalizeCurrentClusterServer(kubeConfig);
+
+  return {
+    authMode: "kubeconfig",
+    kubeConfig,
+    coreApi: kubeConfig.makeApiClient(k8s.CoreV1Api),
+    authorizationApi: kubeConfig.makeApiClient(k8s.AuthorizationV1Api),
+    warnings
+  };
+}
+
+async function discoverCurrentClusterContext(
+  coreApi: k8s.CoreV1Api,
+  workspaceMountPath: string
+): Promise<DiscoveredClusterContext> {
+  const warnings: string[] = [];
+  const namespace = readCurrentNamespace();
+  const currentPodName = readCurrentPodName();
+
+  if (!namespace) {
+    warnings.push(
+      "Automatic namespace discovery failed because the service account namespace file was not available."
+    );
+  }
+
+  if (!currentPodName) {
+    warnings.push("Automatic Pod discovery failed because the current Pod name could not be determined.");
+  }
+
+  if (!namespace || !currentPodName) {
+    return {
+      namespace,
+      currentPodName,
+      warnings
+    };
+  }
+
+  try {
+    const response = await coreApi.readNamespacedPod(currentPodName, namespace);
+    const pod = response.body;
+    const pvcName = discoverPersistentVolumeClaimName(pod, workspaceMountPath);
+    if (!pvcName) {
+      warnings.push(
+        `Automatic PVC discovery could not find a PersistentVolumeClaim mounted at ${workspaceMountPath}.`
+      );
+    }
+
+    return {
+      namespace: pod.metadata?.namespace ?? namespace,
+      currentPodName,
+      currentServiceAccountName: pod.spec?.serviceAccountName,
+      pvcName,
+      warnings
+    };
+  } catch (error) {
+    warnings.push(
+      `Automatic IDE Pod metadata discovery failed for ${namespace}/${currentPodName}: ${toErrorMessage(error)}`
+    );
+    return {
+      namespace,
+      currentPodName,
+      warnings
+    };
+  }
+}
+
+async function checkRequiredPermissions(
+  authorizationApi: k8s.AuthorizationV1Api,
+  namespace: string,
+  serviceAccountName?: string
+): Promise<PermissionReport> {
+  const checks = await Promise.all(
+    REQUIRED_PERMISSION_CHECKS.map(async (target) => {
+      try {
+        const response = await authorizationApi.createSelfSubjectAccessReview({
+          apiVersion: "authorization.k8s.io/v1",
+          kind: "SelfSubjectAccessReview",
+          spec: {
+            resourceAttributes: {
+              namespace,
+              group: "",
+              verb: target.verb,
+              resource: target.resource,
+              subresource: target.subresource
+            }
+          }
+        });
+
+        return {
+          ...target,
+          allowed: Boolean(response.body.status?.allowed),
+          reason: response.body.status?.reason
+        } satisfies PermissionCheckResult;
+      } catch (error) {
+        return {
+          ...target,
+          allowed: false,
+          reason: `Permission review failed: ${toErrorMessage(error)}`
+        } satisfies PermissionCheckResult;
+      }
+    })
+  );
+
+  const warnings = checks
+    .filter((check) => !check.allowed)
+    .map((check) => {
+      const resourceName = check.subresource ? `${check.resource}/${check.subresource}` : check.resource;
+      const suffix = check.reason ? ` (${check.reason})` : "";
+      return `Current ServiceAccount may be missing '${check.verb}' permission for '${resourceName}' in namespace '${namespace}'${suffix}`;
+    });
+
+  return {
+    namespace,
+    serviceAccountName,
+    checks,
+    warnings
+  };
+}
+
+function resolveAvailableKubeconfigPath(
+  configuredPath: string,
+  isConfiguredPathExplicit: boolean
+): string | undefined {
+  if (configuredPath.trim()) {
+    const expandedPath = expandHomeDir(configuredPath.trim());
+    if (!fs.existsSync(expandedPath)) {
+      throw new Error(`Kubeconfig not found at ${expandedPath}`);
+    }
+
+    return expandedPath;
+  }
+
+  const defaultPath = path.join(os.homedir(), ".kube", "config");
+  if (fs.existsSync(defaultPath)) {
+    return defaultPath;
+  }
+
+  if (isConfiguredPathExplicit) {
+    return undefined;
+  }
+
+  return undefined;
+}
+
+function normalizeCurrentClusterServer(kubeConfig: k8s.KubeConfig): void {
+  const cluster = kubeConfig.getCurrentCluster();
+  if (!cluster) {
+    return;
+  }
+
+  const normalizedServer = normalizeKubeApiServerUrl(cluster.server, cluster.tlsServerName);
+  (cluster as { server: string }).server = normalizedServer;
+}
+
+function readCurrentNamespace(serviceAccountNamespaceFile = SERVICE_ACCOUNT_NAMESPACE_FILE): string | undefined {
+  try {
+    return fs.readFileSync(serviceAccountNamespaceFile, "utf8").trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readCurrentPodName(environment: NodeJS.ProcessEnv = process.env): string | undefined {
+  return environment.POD_NAME?.trim() || environment.HOSTNAME?.trim() || undefined;
 }
 
 function expandHomeDir(inputPath: string): string {
@@ -424,14 +775,18 @@ function buildUrlWithHost(originalUrl: string, parsedUrl: URL, host: string): st
       : "";
   const normalizedHost = net.isIPv6(host) && !host.startsWith("[") ? `[${host}]` : host;
   const port = parsedUrl.port ? `:${parsedUrl.port}` : "";
-  const path = parsedUrl.pathname === "/" && !originalUrl.endsWith("/") ? "" : parsedUrl.pathname;
+  const pathName = parsedUrl.pathname === "/" && !originalUrl.endsWith("/") ? "" : parsedUrl.pathname;
 
-  return `${parsedUrl.protocol}//${auth}${normalizedHost}${port}${path}${parsedUrl.search}${parsedUrl.hash}`;
+  return `${parsedUrl.protocol}//${auth}${normalizedHost}${port}${pathName}${parsedUrl.search}${parsedUrl.hash}`;
 }
 
 function isLoopbackHost(host: string): boolean {
   const normalizedHost = host.trim().replace(/^\[(.*)\]$/, "$1").toLowerCase();
   return normalizedHost === "127.0.0.1" || normalizedHost === "::1" || normalizedHost === "localhost";
+}
+
+function looksLikeWindowsPath(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(value);
 }
 
 function delay(ms: number): Promise<void> {
@@ -442,4 +797,8 @@ function isNotFoundError(error: unknown): boolean {
   const maybeStatusCode = (error as { response?: { statusCode?: number }; statusCode?: number } | undefined)?.response?.statusCode
     ?? (error as { statusCode?: number } | undefined)?.statusCode;
   return maybeStatusCode === 404;
+}
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

@@ -7,6 +7,7 @@ import {
   mapWorkspaceFileToPodPath,
   type ExecutionTarget,
   type ManagedPodRun,
+  type PermissionCheckResult,
   type SelectionTarget,
   type WorkspaceFileTarget
 } from "./podManager";
@@ -24,8 +25,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(outputChannel);
 
   currentConfig = loadConfig();
-  podManager = createPodManager(currentConfig);
   warnAboutReservedApiSetting(currentConfig);
+  podManager = await createPodManager(currentConfig);
+  currentConfig = podManager?.getConfig() ?? currentConfig;
 
   statusBar = new StatusBarController(context, {
     onRefresh: async () => podManager?.listManagedPods() ?? [],
@@ -78,10 +80,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return;
     }
 
-    currentConfig = loadConfig();
-    podManager = createPodManager(currentConfig);
-    warnAboutReservedApiSetting(currentConfig);
-    void refreshRunningState();
+    void reinitializePodManager();
   });
 
   context.subscriptions.push(runFileCommand, runSelectionCommand, showStatusCommand, cleanupCommand, saveListener, configListener);
@@ -316,15 +315,60 @@ function getSingleWorkspaceFolder(uri: vscode.Uri): vscode.WorkspaceFolder | und
   return workspaceFolder;
 }
 
-function createPodManager(config: GPURunnerConfig): PodManager | undefined {
+async function reinitializePodManager(): Promise<void> {
+  const loadedConfig = loadConfig();
+  currentConfig = loadedConfig;
+  warnAboutReservedApiSetting(loadedConfig);
+  podManager = await createPodManager(loadedConfig);
+  currentConfig = podManager?.getConfig() ?? loadedConfig;
+  await refreshRunningState();
+}
+
+async function createPodManager(config: GPURunnerConfig): Promise<PodManager | undefined> {
   try {
-    return new PodManager(config);
+    const manager = await PodManager.create(config);
+    reportPodManagerRuntime(manager);
+    return manager;
   } catch (error) {
     outputChannel?.appendLine(`[GPU Runner] Pod manager initialization skipped: ${toErrorMessage(error)}`);
     void vscode.window.showWarningMessage(
       `GPU Runner could not initialize Kubernetes access yet: ${toErrorMessage(error)}`
     );
     return undefined;
+  }
+}
+
+function reportPodManagerRuntime(manager: PodManager): void {
+  const runtime = manager.getRuntimeState();
+  const effectiveConfig = manager.getConfig();
+  const deniedChecks = runtime.permissionReport?.checks.filter((check) => !check.allowed) ?? [];
+
+  outputChannel?.appendLine(`[GPU Runner] Kubernetes auth mode: ${runtime.authMode}`);
+  outputChannel?.appendLine(`[GPU Runner] Effective namespace: ${effectiveConfig.namespace}`);
+  outputChannel?.appendLine(`[GPU Runner] Effective workspace PVC: ${effectiveConfig.pvcName}`);
+  outputChannel?.appendLine(
+    `[GPU Runner] Execution ServiceAccount: ${effectiveConfig.executionServiceAccountName || "(cluster default)"}`
+  );
+
+  if (runtime.discoveredContext?.currentPodName) {
+    outputChannel?.appendLine(`[GPU Runner] Current IDE Pod: ${runtime.discoveredContext.currentPodName}`);
+  }
+
+  if (runtime.warnings.length > 0) {
+    runtime.warnings.forEach((warning) => {
+      outputChannel?.appendLine(`[GPU Runner] Warning: ${warning}`);
+    });
+
+    void vscode.window.showWarningMessage(
+      "GPU Runner initialized with Kubernetes warnings. See the GPU Pod Runner output channel for details."
+    );
+  }
+
+  if (deniedChecks.length > 0) {
+    outputChannel?.appendLine("[GPU Runner] Permission warnings:");
+    deniedChecks.forEach((check) => {
+      outputChannel?.appendLine(`  - ${formatPermissionCheck(check)}`);
+    });
   }
 }
 
@@ -359,4 +403,10 @@ function toErrorMessage(error: unknown): string {
 
 function escapeForDoubleQuotes(value: string): string {
   return value.replace(/"/g, '""');
+}
+
+function formatPermissionCheck(check: PermissionCheckResult): string {
+  const resourceName = check.subresource ? `${check.resource}/${check.subresource}` : check.resource;
+  const reason = check.reason ? ` (${check.reason})` : "";
+  return `${check.verb} ${resourceName}: denied${reason}`;
 }

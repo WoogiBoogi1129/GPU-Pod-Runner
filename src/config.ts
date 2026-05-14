@@ -1,6 +1,17 @@
 import * as vscode from "vscode";
 
 export type AutoDetectPrompt = "always-ask" | "auto-gpu" | "auto-local";
+export type AuthMode = "auto" | "in-cluster" | "kubeconfig";
+
+export interface ConfigManualOverrides {
+  namespace: boolean;
+  pvcName: boolean;
+  workspaceMountPath: boolean;
+  kubeconfigPath: boolean;
+  authMode: boolean;
+  autoDiscoverClusterContext: boolean;
+  executionServiceAccountName: boolean;
+}
 
 export interface GPURunnerConfig {
   namespace: string;
@@ -14,7 +25,11 @@ export interface GPURunnerConfig {
   autoDetect: boolean;
   autoDetectPrompt: AutoDetectPrompt;
   kubeconfigPath: string;
+  authMode: AuthMode;
+  autoDiscoverClusterContext: boolean;
+  executionServiceAccountName: string;
   apiServerUrl: string;
+  manualOverrides: ConfigManualOverrides;
 }
 
 export function loadConfig(): GPURunnerConfig {
@@ -32,6 +47,37 @@ export function loadConfig(): GPURunnerConfig {
     autoDetect: config.get<boolean>("autoDetect", true),
     autoDetectPrompt: config.get<AutoDetectPrompt>("autoDetectPrompt", "always-ask"),
     kubeconfigPath: config.get<string>("kubeconfigPath", ""),
+    authMode: config.get<AuthMode>("authMode", "auto"),
+    autoDiscoverClusterContext: config.get<boolean>("autoDiscoverClusterContext", true),
+    executionServiceAccountName: config.get<string>("executionServiceAccountName", ""),
+    manualOverrides: {
+      namespace: hasExplicitConfigurationValue(config, "namespace"),
+      pvcName: hasExplicitConfigurationValue(config, "pvcName"),
+      workspaceMountPath: hasExplicitConfigurationValue(config, "workspaceMountPath"),
+      kubeconfigPath: hasExplicitConfigurationValue(config, "kubeconfigPath"),
+      authMode: hasExplicitConfigurationValue(config, "authMode"),
+      autoDiscoverClusterContext: hasExplicitConfigurationValue(config, "autoDiscoverClusterContext"),
+      executionServiceAccountName: hasExplicitConfigurationValue(config, "executionServiceAccountName")
+    },
     apiServerUrl: config.get<string>("apiServerUrl", "")
   };
+}
+
+function hasExplicitConfigurationValue(
+  config: vscode.WorkspaceConfiguration,
+  key: string
+): boolean {
+  const inspected = config.inspect(key);
+  if (!inspected) {
+    return false;
+  }
+
+  return (
+    inspected.globalValue !== undefined
+    || inspected.workspaceValue !== undefined
+    || inspected.workspaceFolderValue !== undefined
+    || inspected.globalLanguageValue !== undefined
+    || inspected.workspaceLanguageValue !== undefined
+    || inspected.workspaceFolderLanguageValue !== undefined
+  );
 }

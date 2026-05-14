@@ -1,12 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import type { V1Pod } from "@kubernetes/client-node";
 import type { GPURunnerConfig } from "../config";
 import {
+  applyAutoDiscoveredContext,
   buildGpuResourceRequirements,
   buildPodManifest,
   buildSelectionConfigMapManifest,
+  discoverPersistentVolumeClaimName,
   mapWorkspaceFileToPodPath,
   normalizeKubeApiServerUrl,
+  resolveAuthStrategy,
   type SelectionTarget,
   type WorkspaceFileTarget
 } from "../podManager";
@@ -23,7 +27,19 @@ const baseConfig: GPURunnerConfig = {
   autoDetect: true,
   autoDetectPrompt: "always-ask",
   kubeconfigPath: "",
-  apiServerUrl: ""
+  authMode: "auto",
+  autoDiscoverClusterContext: true,
+  executionServiceAccountName: "",
+  apiServerUrl: "",
+  manualOverrides: {
+    namespace: false,
+    pvcName: false,
+    workspaceMountPath: false,
+    kubeconfigPath: false,
+    authMode: false,
+    autoDiscoverClusterContext: false,
+    executionServiceAccountName: false
+  }
 };
 
 test("maps workspace files into pod workspace paths", () => {
@@ -66,7 +82,83 @@ test("keeps non-loopback kube API servers unchanged", () => {
   assert.equal(normalized, "https://10.96.0.1:6443");
 });
 
-test("builds pod manifests for workspace files", () => {
+test("prefers in-cluster auth in auto mode when the extension runs inside a pod", () => {
+  assert.equal(resolveAuthStrategy("auto", true), "in-cluster");
+});
+
+test("falls back to kubeconfig auth in auto mode outside the cluster", () => {
+  assert.equal(resolveAuthStrategy("auto", false), "kubeconfig");
+});
+
+test("applies auto-discovered namespace, PVC, and service account when no manual override exists", () => {
+  const resolved = applyAutoDiscoveredContext(baseConfig, {
+    namespace: "team-a",
+    pvcName: "workspace-a",
+    currentServiceAccountName: "ide-runner",
+    warnings: []
+  });
+
+  assert.equal(resolved.namespace, "team-a");
+  assert.equal(resolved.pvcName, "workspace-a");
+  assert.equal(resolved.executionServiceAccountName, "ide-runner");
+});
+
+test("keeps manually configured values ahead of auto-discovered context", () => {
+  const resolved = applyAutoDiscoveredContext(
+    {
+      ...baseConfig,
+      namespace: "manual-ns",
+      pvcName: "manual-pvc",
+      executionServiceAccountName: "manual-sa",
+      manualOverrides: {
+        ...baseConfig.manualOverrides,
+        namespace: true,
+        pvcName: true,
+        executionServiceAccountName: true
+      }
+    },
+    {
+      namespace: "auto-ns",
+      pvcName: "auto-pvc",
+      currentServiceAccountName: "auto-sa",
+      warnings: []
+    }
+  );
+
+  assert.equal(resolved.namespace, "manual-ns");
+  assert.equal(resolved.pvcName, "manual-pvc");
+  assert.equal(resolved.executionServiceAccountName, "manual-sa");
+});
+
+test("discovers the workspace PVC from the current IDE Pod", () => {
+  const pod: V1Pod = {
+    spec: {
+      containers: [
+        {
+          name: "code-server",
+          volumeMounts: [
+            {
+              name: "workspace",
+              mountPath: "/workspace"
+            }
+          ]
+        }
+      ],
+      volumes: [
+        {
+          name: "workspace",
+          persistentVolumeClaim: {
+            claimName: "shared-workspace-pvc"
+          }
+        }
+      ]
+    }
+  };
+
+  assert.equal(discoverPersistentVolumeClaimName(pod, "/workspace"), "shared-workspace-pvc");
+});
+
+test("builds pod manifests for workspace files with an execution service account", () => {
   const target: WorkspaceFileTarget = {
     kind: "workspace-file",
     sourcePath: "C:\\GPU-Pod-Runner\\train.py",
@@ -74,9 +166,17 @@ test("builds pod manifests for workspace files", () => {
     podScriptPath: "/workspace/train.py"
   };
 
-  const manifest = buildPodManifest(baseConfig, target, "gpu-train-abc12", "ml-dev");
+  const manifest = buildPodManifest(
+    {
+      ...baseConfig,
+      executionServiceAccountName: "ide-runner"
+    },
+    target,
+    "gpu-train-abc12",
+    "ml-dev"
+  );
 
-  assert.equal(manifest.spec?.serviceAccountName, "gpu-runner-sa");
+  assert.equal(manifest.spec?.serviceAccountName, "ide-runner");
   assert.equal(manifest.spec?.restartPolicy, "Never");
   assert.equal(manifest.spec?.containers?.[0].command?.[1], "/workspace/train.py");
 });

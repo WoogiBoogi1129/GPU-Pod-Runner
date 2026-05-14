@@ -22,6 +22,8 @@
   "files": [
     "dist/**/*",
     "k8s/**/*",
+    "docker/**/*",
+    "docs/**/*",
     "README.md",
     "LICENSE"
   ],
@@ -84,7 +86,7 @@
         "gpuRunner.namespace": {
           "type": "string",
           "default": "ml-dev",
-          "description": "Namespace where GPU Pods are created."
+          "description": "Namespace where GPU Pods are created. Auto-discovery can override this unless you set it explicitly."
         },
         "gpuRunner.image": {
           "type": "string",
@@ -111,12 +113,12 @@
         "gpuRunner.pvcName": {
           "type": "string",
           "default": "shared-workspace-pvc",
-          "description": "ReadWriteMany PVC used to mount the shared workspace."
+          "description": "ReadWriteMany PVC used to mount the shared workspace. Auto-discovery can override this unless you set it explicitly."
         },
         "gpuRunner.workspaceMountPath": {
           "type": "string",
           "default": "/workspace",
-          "description": "Mount path of the shared workspace inside the Pod."
+          "description": "Mount path of the shared workspace inside the Pod and the IDE Pod mount used for PVC discovery."
         },
         "gpuRunner.podTimeoutSeconds": {
           "type": "number",
@@ -147,7 +149,32 @@
         "gpuRunner.kubeconfigPath": {
           "type": "string",
           "default": "",
-          "description": "Optional kubeconfig path. When empty, ~/.kube/config is used."
+          "description": "Optional kubeconfig path. Used when authMode is kubeconfig or auto falls back to kubeconfig."
+        },
+        "gpuRunner.authMode": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "in-cluster",
+            "kubeconfig"
+          ],
+          "enumDescriptions": [
+            "Prefer in-cluster ServiceAccount auth when running inside a Pod, otherwise use kubeconfig.",
+            "Always use the current Pod's ServiceAccount via Kubernetes in-cluster auth.",
+            "Always use kubeconfig-based authentication."
+          ],
+          "description": "Authentication mode for Kubernetes API access."
+        },
+        "gpuRunner.autoDiscoverClusterContext": {
+          "type": "boolean",
+          "default": true,
+          "description": "Best-effort auto-discovery of namespace, current ServiceAccount, and /workspace PVC from the current IDE Pod."
+        },
+        "gpuRunner.executionServiceAccountName": {
+          "type": "string",
+          "default": "",
+          "description": "ServiceAccount used by execution Pods. When empty, the current IDE Pod ServiceAccount is used when auto-discovery succeeds."
         },
         "gpuRunner.apiServerUrl": {
           "type": "string",
