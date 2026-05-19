@@ -186,13 +186,13 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "check-types": "tsc --noEmit",
+    "check-types": "node ./node_modules/typescript/bin/tsc --noEmit",
     "compile": "npm run check-types && node ./esbuild.js",
     "watch": "node ./esbuild.js --watch",
     "pretest": "npm run compile",
     "test": "npm run test:unit",
-    "test:unit": "tsx --test src/test/**/*.test.ts",
-    "package:vsix": "vsce package --allow-missing-repository"
+    "test:unit": "node ./node_modules/tsx/dist/cli.mjs --test src/test/**/*.test.ts",
+    "package:vsix": "node ./node_modules/@vscode/vsce/vsce package --allow-missing-repository"
   },
   "dependencies": {
     "@kubernetes/client-node": "^0.22.3"

@@ -79,7 +79,7 @@ GPU 사용 패턴이 포함된 Python 코드를 감지해 Kubernetes GPU Executi
 
 Extension이 사전 설치된 `code-server` 이미지 Dockerfile:
 
-- [docker/code-server.Dockerfile](/home/ubuntu/GPU-Pod-Runner/docker/code-server.Dockerfile)
+- `docker/code-server.Dockerfile`
 
 예시 빌드:
 
@@ -90,9 +90,9 @@ docker push your-registry.example.com/gpu-runner-code-server:latest
 
 ## Kubernetes 매니페스트
 
-- RBAC: [k8s/rbac.yaml](/home/ubuntu/GPU-Pod-Runner/k8s/rbac.yaml)
-- RWX PVC 예시: [k8s/shared-pvc.yaml](/home/ubuntu/GPU-Pod-Runner/k8s/shared-pvc.yaml)
-- `code-server` IDE Deployment/Service 예시: [k8s/code-server-ide.yaml](/home/ubuntu/GPU-Pod-Runner/k8s/code-server-ide.yaml)
+- RBAC: `k8s/rbac.yaml`
+- RWX PVC 예시: `k8s/shared-pvc.yaml`
+- `code-server` IDE Deployment/Service 예시: `k8s/code-server-ide.yaml`
 
 적용 예시:
 
