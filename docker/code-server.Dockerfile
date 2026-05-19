@@ -7,6 +7,7 @@ COPY src ./src
 COPY README.md LICENSE ./
 COPY docs ./docs
 COPY k8s ./k8s
+COPY docker ./docker
 
 RUN npm ci
 RUN npm run package:vsix && cp ./*.vsix /tmp/gpu-pod-runner.vsix
