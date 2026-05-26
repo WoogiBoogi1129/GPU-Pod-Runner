@@ -67,7 +67,13 @@ export interface DiscoveredClusterContext {
   currentPodName?: string;
   currentServiceAccountName?: string;
   pvcName?: string;
+  workspaceMountPath?: string;
   warnings: string[];
+}
+
+export interface PersistentVolumeClaimMount {
+  mountPath: string;
+  pvcName: string;
 }
 
 export interface PermissionCheckTarget {
@@ -218,17 +224,119 @@ export function discoverPersistentVolumeClaimName(
   pod: k8s.V1Pod,
   workspaceMountPath: string
 ): string | undefined {
-  const containers = pod.spec?.containers ?? [];
-  const volumeName = containers
-    .flatMap((container) => container.volumeMounts ?? [])
-    .find((mount) => mount.mountPath === workspaceMountPath)
-    ?.name;
+  return discoverWorkspaceVolumeContext(pod, workspaceMountPath).pvcName;
+}
 
-  if (!volumeName) {
-    return undefined;
+export function discoverPersistentVolumeClaimMounts(
+  pod: k8s.V1Pod
+): PersistentVolumeClaimMount[] {
+  const pvcByVolumeName = new Map<string, string>();
+  for (const volume of pod.spec?.volumes ?? []) {
+    if (volume.name && volume.persistentVolumeClaim?.claimName) {
+      pvcByVolumeName.set(volume.name, volume.persistentVolumeClaim.claimName);
+    }
   }
 
-  return pod.spec?.volumes?.find((volume) => volume.name === volumeName)?.persistentVolumeClaim?.claimName;
+  const deduped = new Map<string, PersistentVolumeClaimMount>();
+  for (const container of pod.spec?.containers ?? []) {
+    for (const mount of container.volumeMounts ?? []) {
+      if (!mount.name || !mount.mountPath) {
+        continue;
+      }
+
+      const pvcName = pvcByVolumeName.get(mount.name);
+      if (!pvcName) {
+        continue;
+      }
+
+      deduped.set(
+        `${mount.mountPath}:${pvcName}`,
+        {
+          mountPath: mount.mountPath,
+          pvcName
+        }
+      );
+    }
+  }
+
+  return [...deduped.values()].sort((left, right) => left.mountPath.localeCompare(right.mountPath));
+}
+
+export function discoverWorkspaceVolumeContext(
+  pod: k8s.V1Pod,
+  workspaceMountPath: string,
+  environment: NodeJS.ProcessEnv = process.env
+): {
+  mountPath?: string;
+  pvcName?: string;
+  warnings: string[];
+} {
+  const warnings: string[] = [];
+  const pvcMounts = discoverPersistentVolumeClaimMounts(pod);
+  if (pvcMounts.length === 0) {
+    return { warnings };
+  }
+
+  const exactMatch = pvcMounts.find((mount) => mount.mountPath === workspaceMountPath);
+  if (exactMatch) {
+    return {
+      mountPath: exactMatch.mountPath,
+      pvcName: exactMatch.pvcName,
+      warnings
+    };
+  }
+
+  const homeDir = environment.HOME?.trim();
+  if (homeDir) {
+    const homeMatch = pvcMounts.find((mount) => mount.mountPath === homeDir);
+    if (homeMatch) {
+      warnings.push(
+        `Automatic workspace discovery is using ${homeMatch.mountPath} instead of ${workspaceMountPath}.`
+      );
+      return {
+        mountPath: homeMatch.mountPath,
+        pvcName: homeMatch.pvcName,
+        warnings
+      };
+    }
+
+    const containingHomeMatch = pvcMounts
+      .filter((mount) => homeDir.startsWith(`${mount.mountPath}/`))
+      .sort((left, right) => right.mountPath.length - left.mountPath.length)[0];
+
+    if (containingHomeMatch) {
+      warnings.push(
+        `Automatic workspace discovery is using ${containingHomeMatch.mountPath} instead of ${workspaceMountPath}.`
+      );
+      return {
+        mountPath: containingHomeMatch.mountPath,
+        pvcName: containingHomeMatch.pvcName,
+        warnings
+      };
+    }
+  }
+
+  const workspaceFallback = pvcMounts.find((mount) => mount.mountPath === "/workspace");
+  if (workspaceFallback) {
+    warnings.push(
+      `Automatic workspace discovery could not find ${workspaceMountPath}; falling back to ${workspaceFallback.mountPath}.`
+    );
+    return {
+      mountPath: workspaceFallback.mountPath,
+      pvcName: workspaceFallback.pvcName,
+      warnings
+    };
+  }
+
+  const firstMount = pvcMounts[0];
+  warnings.push(
+    `Automatic workspace discovery could not find ${workspaceMountPath}; falling back to ${firstMount.mountPath}.`
+  );
+  return {
+    mountPath: firstMount.mountPath,
+    pvcName: firstMount.pvcName,
+    warnings
+  };
 }
 
 export function applyAutoDiscoveredContext(
@@ -243,6 +351,9 @@ export function applyAutoDiscoveredContext(
     ...config,
     namespace: config.manualOverrides.namespace ? config.namespace : discovery.namespace ?? config.namespace,
     pvcName: config.manualOverrides.pvcName ? config.pvcName : discovery.pvcName ?? config.pvcName,
+    workspaceMountPath: config.manualOverrides.workspaceMountPath
+      ? config.workspaceMountPath
+      : discovery.workspaceMountPath ?? config.workspaceMountPath,
     executionServiceAccountName: config.manualOverrides.executionServiceAccountName
       ? config.executionServiceAccountName
       : discovery.currentServiceAccountName ?? config.executionServiceAccountName
@@ -634,8 +745,10 @@ async function discoverCurrentClusterContext(
   try {
     const response = await coreApi.readNamespacedPod(currentPodName, namespace);
     const pod = response.body;
-    const pvcName = discoverPersistentVolumeClaimName(pod, workspaceMountPath);
-    if (!pvcName) {
+    const workspaceVolume = discoverWorkspaceVolumeContext(pod, workspaceMountPath);
+    warnings.push(...workspaceVolume.warnings);
+
+    if (!workspaceVolume.pvcName) {
       warnings.push(
         `Automatic PVC discovery could not find a PersistentVolumeClaim mounted at ${workspaceMountPath}.`
       );
@@ -645,7 +758,8 @@ async function discoverCurrentClusterContext(
       namespace: pod.metadata?.namespace ?? namespace,
       currentPodName,
       currentServiceAccountName: pod.spec?.serviceAccountName,
-      pvcName,
+      pvcName: workspaceVolume.pvcName,
+      workspaceMountPath: workspaceVolume.mountPath,
       warnings
     };
   } catch (error) {

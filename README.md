@@ -9,7 +9,7 @@ GPU 사용 패턴이 포함된 Python 코드를 감지해 Kubernetes GPU Executi
 - Python 파일 또는 선택 코드 GPU Pod 실행
 - `authMode=auto`일 때 Pod 내부 `in-cluster ServiceAccount` 인증 우선 사용
 - `kubeconfig` 기반 fallback 유지
-- 현재 IDE Pod의 namespace, ServiceAccount, `/workspace` PVC 자동 탐지
+- 현재 IDE Pod의 namespace, ServiceAccount, PVC-backed workspace mount 자동 탐지
 - `gpuRunner.*` 수동 설정이 자동 탐지보다 항상 우선
 - `SelfSubjectAccessReview` 기반 권한 점검 및 경고 표시
 - `code-server` 기반 사전 설치 IDE 이미지와 예시 매니페스트 제공
@@ -25,12 +25,14 @@ GPU 사용 패턴이 포함된 Python 코드를 감지해 Kubernetes GPU Executi
 ## 핵심 동작
 
 - **Run File**
-  - IDE Pod와 Execution Pod가 같은 RWX PVC를 `/workspace`에 마운트한다고 가정합니다.
-  - 활성 Python 파일을 워크스페이스 상대경로로 변환해 Execution Pod 안의 `/workspace/...` 경로로 실행합니다.
+  - IDE Pod와 Execution Pod가 같은 RWX PVC를 같은 경로에 마운트한다고 가정합니다.
+  - 기본 예시는 `/workspace` 기준이지만, JupyterHub 모드에서는 `/home/jovyan` 같은 사용자 홈 마운트도 지원합니다.
+  - 활성 Python 파일을 워크스페이스 상대경로로 변환해 Execution Pod 안의 같은 PVC 경로로 실행합니다.
 - **Run Selection**
   - 선택 코드를 ConfigMap으로 업로드해 `/opt/gpu-runner/selection.py`로 마운트하고 실행합니다.
 - **자동 탐지**
-  - 현재 IDE Pod 안에서 실행 중이면 namespace, 현재 ServiceAccount, `/workspace`에 연결된 PVC 이름을 best-effort로 탐지합니다.
+  - 현재 IDE Pod 안에서 실행 중이면 namespace, 현재 ServiceAccount, PVC-backed workspace mount를 best-effort로 탐지합니다.
+  - 명시한 `gpuRunner.workspaceMountPath`가 보이지 않으면 `/home/jovyan` 같은 `HOME` 정렬 마운트를 우선 탐지합니다.
   - 탐지가 일부 실패해도 실행 자체를 사전 차단하지는 않고, 설정값 또는 kubeconfig 방식으로 계속 진행합니다.
 
 ## 설정
@@ -80,6 +82,10 @@ GPU 사용 패턴이 포함된 Python 코드를 감지해 Kubernetes GPU Executi
 Extension이 사전 설치된 `code-server` 이미지 Dockerfile:
 
 - `docker/code-server.Dockerfile`
+
+JupyterHub에서 VS Code를 직접 실행하기 위한 별도 이미지 Dockerfile:
+
+- `docker/jupyterhub-code-server.Dockerfile`
 
 예시 빌드:
 
@@ -132,6 +138,23 @@ npm run compile
 npm test
 ```
 
+## JupyterHub direct VS Code 모드
+
+이 레포는 기존 standalone `code-server` 흐름과 별도로 JupyterHub direct VS Code 모드를 지원한다.
+
+핵심 차이:
+
+- standalone: `docker/code-server.Dockerfile`
+- JupyterHub direct VS Code: `docker/jupyterhub-code-server.Dockerfile`
+
+JupyterHub 모드에서는 `code-server`를 직접 띄우지 않고 `jupyter standaloneproxy`로 감싸서 JupyterHub single-user 계약에 맞춘다.
+
+시작점:
+
+- 문서: `docs/jupyterhub-integration.md`
+- 프로필 예시: `examples/jupyterhub-profile-values.yaml`
+- RBAC 예시: `examples/jupyterhub-vscode-rbac.yaml`
+
 ## 동작 확인용 예제
 
 - `examples/cnn_gpu_smoke_test.py`
@@ -143,4 +166,4 @@ npm test
 - 단일 루트 워크스페이스만 지원합니다.
 - 실시간 로그 스트리밍은 지원하지 않고 완료 후 로그 조회만 지원합니다.
 - 전체 파일 실행은 공유 워크스페이스 PVC 구성이 이미 되어 있어야 합니다.
-- `/workspace` 마운트를 현재 IDE Pod에서 찾지 못하면 PVC 자동 탐지는 부분 실패로 처리되고, 수동 설정값 또는 기존 값으로 fallback 합니다.
+- 자동 탐지가 원하는 마운트를 찾지 못하면 `HOME` 정렬 PVC 또는 첫 번째 PVC 마운트로 fallback 할 수 있으므로, 운영 환경에서는 경고 메시지를 함께 확인하는 것이 좋습니다.

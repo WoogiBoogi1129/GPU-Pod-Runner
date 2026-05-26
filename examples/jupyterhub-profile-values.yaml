@@ -1,0 +1,18 @@
+singleuser:
+  profileList:
+    - display_name: "JupyterLab"
+      slug: "jupyterlab"
+      default: true
+      description: "Default JupyterLab environment"
+      kubespawner_override:
+        default_url: /lab
+
+    - display_name: "VS Code"
+      slug: "vscode"
+      description: "Direct code-server profile for JupyterHub users"
+      kubespawner_override:
+        image: your-registry.example.com/gpu-runner-jupyterhub-code-server:latest
+        cmd:
+          - /usr/local/bin/start-jupyterhub-code-server.sh
+        default_url: /
+        service_account: gpu-runner-ide

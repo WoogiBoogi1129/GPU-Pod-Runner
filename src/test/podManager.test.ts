@@ -7,7 +7,9 @@ import {
   buildGpuResourceRequirements,
   buildPodManifest,
   buildSelectionConfigMapManifest,
+  discoverPersistentVolumeClaimMounts,
   discoverPersistentVolumeClaimName,
+  discoverWorkspaceVolumeContext,
   mapWorkspaceFileToPodPath,
   normalizeKubeApiServerUrl,
   resolveAuthStrategy,
@@ -94,12 +96,14 @@ test("applies auto-discovered namespace, PVC, and service account when no manual
   const resolved = applyAutoDiscoveredContext(baseConfig, {
     namespace: "team-a",
     pvcName: "workspace-a",
+    workspaceMountPath: "/home/jovyan",
     currentServiceAccountName: "ide-runner",
     warnings: []
   });
 
   assert.equal(resolved.namespace, "team-a");
   assert.equal(resolved.pvcName, "workspace-a");
+  assert.equal(resolved.workspaceMountPath, "/home/jovyan");
   assert.equal(resolved.executionServiceAccountName, "ide-runner");
 });
 
@@ -114,12 +118,14 @@ test("keeps manually configured values ahead of auto-discovered context", () => 
         ...baseConfig.manualOverrides,
         namespace: true,
         pvcName: true,
+        workspaceMountPath: true,
         executionServiceAccountName: true
       }
     },
     {
       namespace: "auto-ns",
       pvcName: "auto-pvc",
+      workspaceMountPath: "/home/jovyan",
       currentServiceAccountName: "auto-sa",
       warnings: []
     }
@@ -127,6 +133,7 @@ test("keeps manually configured values ahead of auto-discovered context", () => 
 
   assert.equal(resolved.namespace, "manual-ns");
   assert.equal(resolved.pvcName, "manual-pvc");
+  assert.equal(resolved.workspaceMountPath, "/workspace");
   assert.equal(resolved.executionServiceAccountName, "manual-sa");
 });
 
@@ -156,6 +163,86 @@ test("discovers the workspace PVC from the current IDE Pod", () => {
   };
 
   assert.equal(discoverPersistentVolumeClaimName(pod, "/workspace"), "shared-workspace-pvc");
+});
+
+test("lists all PVC-backed mounts on the current IDE Pod", () => {
+  const pod: V1Pod = {
+    spec: {
+      containers: [
+        {
+          name: "code-server",
+          volumeMounts: [
+            {
+              name: "workspace",
+              mountPath: "/workspace"
+            },
+            {
+              name: "home",
+              mountPath: "/home/jovyan"
+            }
+          ]
+        }
+      ],
+      volumes: [
+        {
+          name: "workspace",
+          persistentVolumeClaim: {
+            claimName: "shared-workspace-pvc"
+          }
+        },
+        {
+          name: "home",
+          persistentVolumeClaim: {
+            claimName: "jupyterhub-singleuser-pvc"
+          }
+        }
+      ]
+    }
+  };
+
+  assert.deepEqual(discoverPersistentVolumeClaimMounts(pod), [
+    {
+      mountPath: "/home/jovyan",
+      pvcName: "jupyterhub-singleuser-pvc"
+    },
+    {
+      mountPath: "/workspace",
+      pvcName: "shared-workspace-pvc"
+    }
+  ]);
+});
+
+test("prefers the HOME-aligned PVC mount when the configured workspace path is missing", () => {
+  const pod: V1Pod = {
+    spec: {
+      containers: [
+        {
+          name: "code-server",
+          volumeMounts: [
+            {
+              name: "home",
+              mountPath: "/home/jovyan"
+            }
+          ]
+        }
+      ],
+      volumes: [
+        {
+          name: "home",
+          persistentVolumeClaim: {
+            claimName: "jupyterhub-singleuser-pvc"
+          }
+        }
+      ]
+    }
+  };
+
+  const discovered = discoverWorkspaceVolumeContext(pod, "/workspace", {
+    HOME: "/home/jovyan"
+  });
+
+  assert.equal(discovered.mountPath, "/home/jovyan");
+  assert.equal(discovered.pvcName, "jupyterhub-singleuser-pvc");
 });
 
 test("builds pod manifests for workspace files with an execution service account", () => {

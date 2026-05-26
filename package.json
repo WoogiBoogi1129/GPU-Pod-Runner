@@ -118,7 +118,7 @@
         "gpuRunner.workspaceMountPath": {
           "type": "string",
           "default": "/workspace",
-          "description": "Mount path of the shared workspace inside the Pod and the IDE Pod mount used for PVC discovery."
+          "description": "Mount path of the shared workspace inside the Pod. If this path is not found and auto-discovery is enabled, the extension will fall back to a HOME-aligned PVC mount such as /home/jovyan."
         },
         "gpuRunner.podTimeoutSeconds": {
           "type": "number",
@@ -169,7 +169,7 @@
         "gpuRunner.autoDiscoverClusterContext": {
           "type": "boolean",
           "default": true,
-          "description": "Best-effort auto-discovery of namespace, current ServiceAccount, and /workspace PVC from the current IDE Pod."
+          "description": "Best-effort auto-discovery of namespace, current ServiceAccount, and PVC-backed workspace mount from the current IDE Pod."
         },
         "gpuRunner.executionServiceAccountName": {
           "type": "string",
