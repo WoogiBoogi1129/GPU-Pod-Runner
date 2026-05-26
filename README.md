@@ -149,6 +149,8 @@ npm test
 
 JupyterHub 모드에서는 `code-server`를 직접 띄우지 않고 `jupyter standaloneproxy`로 감싸서 JupyterHub single-user 계약에 맞춘다.
 
+이미지 안의 GPU Pod Runner VSIX는 `/home/jovyan` 아래가 아니라 `/opt/gpu-pod-runner/extensions`에 보관되고, 컨테이너 시작 시 사용자 확장 디렉토리에 자동 설치된다. 이렇게 해야 JupyterHub가 사용자 홈 PVC를 `/home/jovyan`에 마운트해도 확장이 가려지지 않는다.
+
 시작점:
 
 - 문서: `docs/jupyterhub-integration.md`

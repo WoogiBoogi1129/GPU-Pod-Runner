@@ -35,6 +35,7 @@ Important details:
 - The profile command must use `/usr/local/bin/start-jupyterhub-code-server.sh`.
 - The single-user ServiceAccount must have permission to create, list, get, and delete Pods and ConfigMaps in the user namespace.
 - The extension should run in the same namespace and use the same PVC mount path as the JupyterHub user server.
+- No extra hostPath mount is required just to make the extension visible in JupyterHub.
 
 ## Why the standalone image is not enough
 
@@ -48,6 +49,21 @@ JupyterHub expects a single-user server contract that:
 
 The JupyterHub image solves that by wrapping `code-server` with `jupyter standaloneproxy`.
 
+## Image behavior
+
+The JupyterHub image intentionally stores the packaged VSIX at `/opt/gpu-pod-runner/extensions/gpu-pod-runner.vsix` instead of baking it into `/home/jovyan`.
+
+That matters because many JupyterHub deployments mount a per-user PVC on `/home/jovyan`, which would otherwise hide extensions installed there during the image build.
+
+At container startup the launcher script:
+
+- creates the user-scoped code-server directories if needed
+- checks whether `local.gpu-pod-runner` is already installed
+- installs the bundled VSIX into the active user extension directory only when it is missing
+- starts `code-server` through `jupyter standaloneproxy`
+
+This keeps the image self-contained while remaining compatible with JupyterHub home-directory mounts.
+
 ## Runtime expectations inside JupyterHub
 
 The extension no longer assumes `/workspace` is the only valid shared mount.
@@ -59,6 +75,8 @@ At runtime it will:
 - prefer an explicit `workspaceMountPath` if it exists
 - otherwise prefer `HOME`-aligned mounts such as `/home/jovyan`
 - reuse the discovered PVC and ServiceAccount for GPU execution Pods unless the user explicitly overrides them
+
+The bundled launcher script is also compatible with the current `jupyter-server-proxy` standalone CLI and does not rely on unsupported options such as `--ready-check-path`.
 
 ## Recommended RBAC model
 

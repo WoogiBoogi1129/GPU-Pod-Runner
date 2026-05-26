@@ -19,6 +19,9 @@ USER root
 ARG CODE_SERVER_VERSION=4.103.2
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CODE_SERVER_INSTALL_ROOT=/opt/code-server
+ENV GPU_POD_RUNNER_ASSET_ROOT=/opt/gpu-pod-runner
+ENV GPU_POD_RUNNER_VSIX=/opt/gpu-pod-runner/extensions/gpu-pod-runner.vsix
+ENV GPU_POD_RUNNER_EXTENSION_ID=local.gpu-pod-runner
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl git \
@@ -41,14 +44,15 @@ RUN pip install --no-cache-dir "jupyter-server-proxy[standalone]"
 COPY docker/start-jupyterhub-code-server.sh /usr/local/bin/start-jupyterhub-code-server.sh
 COPY --from=extension-builder /tmp/gpu-pod-runner.vsix /tmp/gpu-pod-runner.vsix
 
-RUN chmod 0755 /usr/local/bin/start-jupyterhub-code-server.sh \
-  && chown ${NB_UID}:users /tmp/gpu-pod-runner.vsix
+RUN mkdir -p "${GPU_POD_RUNNER_ASSET_ROOT}/extensions" \
+  && mv /tmp/gpu-pod-runner.vsix "${GPU_POD_RUNNER_VSIX}" \
+  && chmod 0755 /usr/local/bin/start-jupyterhub-code-server.sh \
+  && chmod 0644 "${GPU_POD_RUNNER_VSIX}" \
+  && chown -R ${NB_UID}:users "${GPU_POD_RUNNER_ASSET_ROOT}"
 
 USER ${NB_UID}
 
-RUN mkdir -p /home/jovyan/.local/share/code-server /home/jovyan/.config/code-server /home/jovyan/workspace \
-  && code-server --install-extension /tmp/gpu-pod-runner.vsix \
-  && rm -f /tmp/gpu-pod-runner.vsix
+RUN mkdir -p /home/jovyan/.local/share/code-server /home/jovyan/.config/code-server /home/jovyan/workspace
 
 WORKDIR /home/jovyan
 EXPOSE 8888

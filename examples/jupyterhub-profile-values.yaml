@@ -9,7 +9,7 @@ singleuser:
 
     - display_name: "VS Code"
       slug: "vscode"
-      description: "Direct code-server profile for JupyterHub users"
+      description: "Direct code-server profile for JupyterHub users with bundled GPU Pod Runner extension"
       kubespawner_override:
         image: your-registry.example.com/gpu-runner-jupyterhub-code-server:latest
         cmd:
