@@ -6,7 +6,7 @@ GPU 사용 패턴이 포함된 Python 코드를 감지해 Kubernetes GPU Executi
 
 ## 주요 기능
 
-- Python 파일 또는 선택 코드 GPU Pod 실행
+- Python 파일 GPU Pod 실행
 - `authMode=auto`일 때 Pod 내부 `in-cluster ServiceAccount` 인증 우선 사용
 - `kubeconfig` 기반 fallback 유지
 - 현재 IDE Pod의 namespace, ServiceAccount, PVC-backed workspace mount 자동 탐지
@@ -20,7 +20,8 @@ GPU 사용 패턴이 포함된 Python 코드를 감지해 Kubernetes GPU Executi
 - `kubectl` 사용 가능
 - 이미지 빌드 및 레지스트리 푸시 가능
 - RWX PVC 준비
-- GPU 노드와 `nvidia.com/gpu` 또는 HAMi 자원 사용 가능
+- GPU 노드와 `nvidia.com/gpu` 자원 사용 가능
+- HAMi 기반 VRAM 분할을 쓸 경우에만 fractional GPU sharing 활성화 필요
 
 ## 핵심 동작
 
@@ -28,8 +29,6 @@ GPU 사용 패턴이 포함된 Python 코드를 감지해 Kubernetes GPU Executi
   - IDE Pod와 Execution Pod가 같은 RWX PVC를 같은 경로에 마운트한다고 가정합니다.
   - 기본 예시는 `/workspace` 기준이지만, JupyterHub 모드에서는 `/home/jovyan` 같은 사용자 홈 마운트도 지원합니다.
   - 활성 Python 파일을 워크스페이스 상대경로로 변환해 Execution Pod 안의 같은 PVC 경로로 실행합니다.
-- **Run Selection**
-  - 선택 코드를 ConfigMap으로 업로드해 `/opt/gpu-runner/selection.py`로 마운트하고 실행합니다.
 - **자동 탐지**
   - 현재 IDE Pod 안에서 실행 중이면 namespace, 현재 ServiceAccount, PVC-backed workspace mount를 best-effort로 탐지합니다.
   - 명시한 `gpuRunner.workspaceMountPath`가 보이지 않으면 `/home/jovyan` 같은 `HOME` 정렬 마운트를 우선 탐지합니다.
@@ -48,7 +47,7 @@ GPU 사용 패턴이 포함된 Python 코드를 감지해 Kubernetes GPU Executi
   "gpuRunner.pvcName": "shared-workspace-pvc",
   "gpuRunner.workspaceMountPath": "/workspace",
   "gpuRunner.executionServiceAccountName": "",
-  "gpuRunner.useHAMi": false,
+  "gpuRunner.enableFractionalGpuSharing": false,
   "gpuRunner.gpuCount": 1
 }
 ```
@@ -66,6 +65,13 @@ GPU 사용 패턴이 포함된 Python 코드를 감지해 Kubernetes GPU Executi
 - `gpuRunner.image`
   - Execution Pod 이미지입니다.
   - 이 값은 자동 탐지하지 않습니다.
+- `gpuRunner.enableFractionalGpuSharing`
+  - `false`가 기본값입니다.
+  - `false`면 `nvidia.com/gpu: 1` 같은 whole-GPU 요청을 사용합니다.
+  - KAI-Scheduler 환경에서 VRAM 단위 분할이 안 되면 이 값을 그대로 `false`로 둡니다.
+- `gpuRunner.gpuCount`
+  - fractional sharing이 꺼져 있을 때 요청할 whole GPU 개수입니다.
+  - 기본값은 `1`이며, KAI-Scheduler 기준 안전한 기본값으로 유지됩니다.
 - `gpuRunner.apiServerUrl`
   - 현재 버전에서는 계속 예약값이며 사용하지 않습니다.
 
@@ -116,8 +122,6 @@ kubectl apply -f k8s/code-server-ide.yaml
 
 - `pods`: `get`, `list`, `create`, `delete`
 - `pods/log`: `get`
-- `configmaps`: `get`, `list`, `create`, `delete`
-
 권한이 부족하면 경고를 표시하지만, 실행 자체를 미리 막지는 않습니다.
 
 ## 검증 순서
@@ -126,9 +130,8 @@ kubectl apply -f k8s/code-server-ide.yaml
 2. IDE Pod를 배포합니다.
 3. IDE Pod 안에서 `/workspace` PVC가 마운트되는지 확인합니다.
 4. `GPU Pod Runner` extension이 사전 설치되었는지 확인합니다.
-5. `Run Selection`이 성공하는지 확인합니다.
-6. `Run File`이 성공하는지 확인합니다.
-7. 실제 GPU 코드가 정상 실행되는지 확인합니다.
+5. `Run File`이 성공하는지 확인합니다.
+6. 실제 GPU 코드가 정상 실행되는지 확인합니다.
 
 ## 개발
 

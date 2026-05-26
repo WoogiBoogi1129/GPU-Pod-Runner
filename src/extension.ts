@@ -5,10 +5,8 @@ import { detectGPUUsage } from "./gpuDetector";
 import {
   PodManager,
   mapWorkspaceFileToPodPath,
-  type ExecutionTarget,
   type ManagedPodRun,
   type PermissionCheckResult,
-  type SelectionTarget,
   type WorkspaceFileTarget
 } from "./podManager";
 import { decideFileExecutionMode } from "./runnerDecisions";
@@ -46,10 +44,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await runCurrentFile();
   });
 
-  const runSelectionCommand = vscode.commands.registerCommand("gpu-runner.runSelection", async () => {
-    await runSelectionInGpuPod();
-  });
-
   const showStatusCommand = vscode.commands.registerCommand("gpu-runner.showStatus", async () => {
     await statusBar?.showStatusPanel();
   });
@@ -83,7 +77,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     void reinitializePodManager();
   });
 
-  context.subscriptions.push(runFileCommand, runSelectionCommand, showStatusCommand, cleanupCommand, saveListener, configListener);
+  context.subscriptions.push(runFileCommand, showStatusCommand, cleanupCommand, saveListener, configListener);
 
   deactivateCleanup = async () => {
     if (!podManager) {
@@ -157,46 +151,6 @@ async function runCurrentFile(): Promise<void> {
   }
 }
 
-async function runSelectionInGpuPod(): Promise<void> {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    vscode.window.showWarningMessage("Open a Python editor selection to run on a GPU Pod.");
-    return;
-  }
-
-  const document = editor.document;
-  if (document.languageId !== "python") {
-    vscode.window.showWarningMessage("GPU Runner only supports Python selections.");
-    return;
-  }
-
-  if (!currentConfig || !podManager) {
-    vscode.window.showErrorMessage("GPU Runner is not initialized.");
-    return;
-  }
-
-  const selectionText = document.getText(editor.selection).trim();
-  if (!selectionText) {
-    vscode.window.showInformationMessage("Select Python code before running it in a GPU Pod.");
-    return;
-  }
-
-  const workspaceFolder = getSingleWorkspaceFolder(document.uri);
-  if (!workspaceFolder) {
-    return;
-  }
-
-  const target: SelectionTarget = {
-    kind: "selection",
-    code: selectionText,
-    sourcePath: document.uri.fsPath,
-    displayName: `${path.parse(document.uri.fsPath).name}-selection`,
-    podScriptPath: "/opt/gpu-runner/selection.py"
-  };
-
-  await runGpuTarget(target, workspaceFolder);
-}
-
 function buildWorkspaceFileTarget(uri: vscode.Uri): WorkspaceFileTarget {
   if (!currentConfig) {
     throw new Error("GPU Runner is not initialized.");
@@ -216,7 +170,7 @@ function buildWorkspaceFileTarget(uri: vscode.Uri): WorkspaceFileTarget {
 }
 
 async function runGpuTarget(
-  target: ExecutionTarget,
+  target: WorkspaceFileTarget,
   workspaceFolder = getSingleWorkspaceFolder(vscode.Uri.file(target.sourcePath))
 ): Promise<void> {
   if (!currentConfig || !podManager || !statusBar || !outputChannel) {

@@ -33,7 +33,7 @@ Important details:
 
 - The profile image must point to the JupyterHub-specific image, not the standalone `code-server` image.
 - The profile command must use `/usr/local/bin/start-jupyterhub-code-server.sh`.
-- The single-user ServiceAccount must have permission to create, list, get, and delete Pods and ConfigMaps in the user namespace.
+- The single-user ServiceAccount must have permission to create, list, get, and delete Pods in the user namespace.
 - The extension should run in the same namespace and use the same PVC mount path as the JupyterHub user server.
 - No extra hostPath mount is required just to make the extension visible in JupyterHub.
 

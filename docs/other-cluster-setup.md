@@ -12,7 +12,7 @@ Instead, it assumes all of the following are true:
 2. The target namespace already contains the ServiceAccount, Role, RoleBinding, and PVC used by the extension.
 3. The Pod can mount a shared workspace PVC at `gpuRunner.workspaceMountPath`.
 4. The mounted workspace inside the Pod has the same directory layout as the local workspace for `Run File`.
-5. The cluster exposes NVIDIA GPU resources as either `nvidia.com/gpu` or HAMi `nvidia.com/gpumem`.
+5. The cluster exposes NVIDIA GPU resources as either `nvidia.com/gpu` or, when fractional sharing is available, HAMi `nvidia.com/gpumem`.
 
 These assumptions come directly from the current implementation:
 
@@ -30,7 +30,7 @@ These assumptions come directly from the current implementation:
 Apply or adapt [k8s/rbac.yaml](/C:/GPU-Pod-Runner/k8s/rbac.yaml) so that the target namespace contains:
 
 - `gpu-runner-sa`
-- a Role that can `get/list/watch/create/delete` Pods and ConfigMaps
+- a Role that can `get/list/watch/create/delete` Pods
 - permission to read `pods/log`
 
 Important:
@@ -96,10 +96,7 @@ If the new cluster uses a different resource key or a non-NVIDIA accelerator mod
 3. Apply adapted RBAC and PVC manifests to that namespace.
 4. Make the project files available in the shared PVC at the same relative layout expected by the extension.
 5. Set extension settings for the new cluster.
-6. Run a small script first with `GPU Runner: Run Selection`.
-7. After that works, test `GPU Runner: Run File` with `examples/cnn_gpu_smoke_test.py` or another small script.
-
-`Run Selection` is useful as a first smoke test because it uploads only the selected snippet through a ConfigMap, so it is less sensitive to PVC path mistakes. `Run File` is the real validation that your shared workspace layout is correct.
+6. Test `GPU Runner: Run File` with `examples/cnn_gpu_smoke_test.py` or another small script.
 
 ## Example settings for another cluster
 
@@ -107,7 +104,7 @@ If the new cluster uses a different resource key or a non-NVIDIA accelerator mod
 {
   "gpuRunner.namespace": "team-a-gpu",
   "gpuRunner.image": "my-registry.example.com/ml/pytorch:cuda12.1",
-  "gpuRunner.useHAMi": false,
+  "gpuRunner.enableFractionalGpuSharing": false,
   "gpuRunner.gpuCount": 1,
   "gpuRunner.pvcName": "team-a-workspace",
   "gpuRunner.workspaceMountPath": "/workspace",
@@ -123,7 +120,6 @@ If the new cluster uses a different resource key or a non-NVIDIA accelerator mod
 - Pod starts but Python says file not found: the PVC layout does not match the local workspace layout.
 - Pod stays Pending: GPU resources, node selectors, image pull, or PVC binding are not ready in the target cluster.
 - Imports fail inside the container: the image does not contain your Python dependencies.
-- `Run Selection` works but `Run File` fails: this almost always means the shared workspace mapping is wrong, not the Kubernetes API access.
 
 ## When code changes are needed
 

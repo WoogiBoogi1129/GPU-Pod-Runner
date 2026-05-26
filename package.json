@@ -2,7 +2,7 @@
   "name": "gpu-pod-runner",
   "displayName": "GPU Pod Runner",
   "description": "Detect GPU-oriented Python code and run it in Kubernetes GPU Pods.",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -14,7 +14,6 @@
   "activationEvents": [
     "onStartupFinished",
     "onCommand:gpu-runner.runFile",
-    "onCommand:gpu-runner.runSelection",
     "onCommand:gpu-runner.showStatus",
     "onCommand:gpu-runner.cleanup"
   ],
@@ -32,11 +31,6 @@
       {
         "command": "gpu-runner.runFile",
         "title": "GPU Runner: Run File",
-        "category": "GPU Runner"
-      },
-      {
-        "command": "gpu-runner.runSelection",
-        "title": "GPU Runner: Run Selection",
         "category": "GPU Runner"
       },
       {
@@ -58,19 +52,9 @@
       }
     ],
     "menus": {
-      "editor/context": [
-        {
-          "command": "gpu-runner.runSelection",
-          "when": "editorLangId == python && editorHasSelection",
-          "group": "navigation"
-        }
-      ],
       "commandPalette": [
         {
           "command": "gpu-runner.runFile"
-        },
-        {
-          "command": "gpu-runner.runSelection"
         },
         {
           "command": "gpu-runner.showStatus"
@@ -93,22 +77,28 @@
           "default": "pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime",
           "description": "Container image used for GPU Pod execution."
         },
+        "gpuRunner.enableFractionalGpuSharing": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable fractional GPU sharing by requesting HAMi VRAM resources. Leave this disabled for KAI-Scheduler environments that only support whole-GPU allocation."
+        },
         "gpuRunner.useHAMi": {
           "type": "boolean",
           "default": false,
-          "description": "Use HAMi fractional GPU resource requests."
+          "description": "Deprecated compatibility alias for gpuRunner.enableFractionalGpuSharing.",
+          "deprecationMessage": "Use gpuRunner.enableFractionalGpuSharing instead. Leave fractional GPU sharing disabled in KAI-Scheduler environments unless HAMi VRAM-based sharing is explicitly supported."
         },
         "gpuRunner.gpuMemoryMB": {
           "type": "number",
           "default": 8000,
           "minimum": 1,
-          "description": "Requested GPU memory in MB when HAMi mode is enabled."
+          "description": "Requested GPU memory in MB when fractional GPU sharing is enabled."
         },
         "gpuRunner.gpuCount": {
           "type": "number",
           "default": 1,
           "minimum": 1,
-          "description": "Number of whole GPUs requested when HAMi mode is disabled."
+          "description": "Number of whole GPUs requested when fractional GPU sharing is disabled. The default is 1 full GPU."
         },
         "gpuRunner.pvcName": {
           "type": "string",
