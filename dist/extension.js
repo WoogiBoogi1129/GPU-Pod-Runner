@@ -4100,7 +4100,7 @@ var require_cookie = __commonJS({
       c.value = cookieValue;
       return c;
     }
-    function parse3(str, options) {
+    function parse2(str, options) {
       if (!options || typeof options !== "object") {
         options = {};
       }
@@ -4282,7 +4282,7 @@ var require_cookie = __commonJS({
       });
     }
     Cookie.cookiesCreated = 0;
-    Cookie.parse = parse3;
+    Cookie.parse = parse2;
     Cookie.fromJSON = fromJSON;
     Cookie.prototype.key = "";
     Cookie.prototype.value = "";
@@ -4839,7 +4839,7 @@ var require_cookie = __commonJS({
     exports2.MemoryCookieStore = MemoryCookieStore;
     exports2.parseDate = parseDate;
     exports2.formatDate = formatDate;
-    exports2.parse = parse3;
+    exports2.parse = parse2;
     exports2.fromJSON = fromJSON;
     exports2.domainMatch = domainMatch;
     exports2.defaultPath = defaultPath;
@@ -5037,7 +5037,7 @@ var require_aws_sign2 = __commonJS({
   "node_modules/aws-sign2/index.js"(exports2, module2) {
     "use strict";
     var crypto2 = require("crypto");
-    var parse3 = require("url").parse;
+    var parse2 = require("url").parse;
     var keys = [
       "acl",
       "location",
@@ -5101,7 +5101,7 @@ var require_aws_sign2 = __commonJS({
     }
     module2.exports.canonicalizeHeaders = canonicalizeHeaders;
     function canonicalizeResource(resource) {
-      var url = parse3(resource, true), path3 = url.pathname, buf2 = [];
+      var url = parse2(resource, true), path3 = url.pathname, buf2 = [];
       Object.keys(url.query).forEach(function(key) {
         if (!~keys.indexOf(key)) return;
         var val = "" == url.query[key] ? "" : "=" + encodeURIComponent(url.query[key]);
@@ -29477,11 +29477,11 @@ var require_lib4 = __commonJS({
   "node_modules/qs/lib/index.js"(exports2, module2) {
     "use strict";
     var stringify = require_stringify2();
-    var parse3 = require_parse();
+    var parse2 = require_parse();
     var formats = require_formats();
     module2.exports = {
       formats,
-      parse: parse3,
+      parse: parse2,
       stringify
     };
   }
@@ -30059,7 +30059,7 @@ var require_uri_all = __commonJS({
       }
       var URI_PARSE = /^(?:([^:\/?#]+):)?(?:\/\/((?:([^\/?#@]*)@)?(\[[^\/?#\]]+\]|[^\/?#:]*)(?:\:(\d*))?))?([^?#]*)(?:\?([^#]*))?(?:#((?:.|\n|\r)*))?/i;
       var NO_MATCH_IS_UNDEFINED = "".match(/(){0}/)[1] === void 0;
-      function parse3(uriString) {
+      function parse2(uriString) {
         var options = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {};
         var components = {};
         var protocol = options.iri !== false ? IRI_PROTOCOL : URI_PROTOCOL;
@@ -30228,8 +30228,8 @@ var require_uri_all = __commonJS({
         var skipNormalization = arguments[3];
         var target = {};
         if (!skipNormalization) {
-          base2 = parse3(serialize(base2, options), options);
-          relative = parse3(serialize(relative, options), options);
+          base2 = parse2(serialize(base2, options), options);
+          relative = parse2(serialize(relative, options), options);
         }
         options = options || {};
         if (!options.tolerant && relative.scheme) {
@@ -30280,24 +30280,24 @@ var require_uri_all = __commonJS({
       }
       function resolve(baseURI, relativeURI, options) {
         var schemelessOptions = assign({ scheme: "null" }, options);
-        return serialize(resolveComponents(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true), schemelessOptions);
+        return serialize(resolveComponents(parse2(baseURI, schemelessOptions), parse2(relativeURI, schemelessOptions), schemelessOptions, true), schemelessOptions);
       }
       function normalize(uri, options) {
         if (typeof uri === "string") {
-          uri = serialize(parse3(uri, options), options);
+          uri = serialize(parse2(uri, options), options);
         } else if (typeOf(uri) === "object") {
-          uri = parse3(serialize(uri, options), options);
+          uri = parse2(serialize(uri, options), options);
         }
         return uri;
       }
       function equal(uriA, uriB, options) {
         if (typeof uriA === "string") {
-          uriA = serialize(parse3(uriA, options), options);
+          uriA = serialize(parse2(uriA, options), options);
         } else if (typeOf(uriA) === "object") {
           uriA = serialize(uriA, options);
         }
         if (typeof uriB === "string") {
-          uriB = serialize(parse3(uriB, options), options);
+          uriB = serialize(parse2(uriB, options), options);
         } else if (typeOf(uriB) === "object") {
           uriB = serialize(uriB, options);
         }
@@ -30312,7 +30312,7 @@ var require_uri_all = __commonJS({
       var handler = {
         scheme: "http",
         domainHost: true,
-        parse: function parse4(components, options) {
+        parse: function parse3(components, options) {
           if (!components.host) {
             components.error = components.error || "HTTP URIs must have a host.";
           }
@@ -30341,7 +30341,7 @@ var require_uri_all = __commonJS({
       var handler$2 = {
         scheme: "ws",
         domainHost: true,
-        parse: function parse4(components, options) {
+        parse: function parse3(components, options) {
           var wsComponents = components;
           wsComponents.secure = isSecure(wsComponents);
           wsComponents.resourceName = (wsComponents.path || "/") + (wsComponents.query ? "?" + wsComponents.query : "");
@@ -30514,7 +30514,7 @@ var require_uri_all = __commonJS({
       var UUID = /^[0-9A-Fa-f]{8}(?:\-[0-9A-Fa-f]{4}){3}\-[0-9A-Fa-f]{12}$/;
       var handler$6 = {
         scheme: "urn:uuid",
-        parse: function parse4(urnComponents, options) {
+        parse: function parse3(urnComponents, options) {
           var uuidComponents = urnComponents;
           uuidComponents.uuid = uuidComponents.nss;
           uuidComponents.nss = void 0;
@@ -30539,7 +30539,7 @@ var require_uri_all = __commonJS({
       exports3.SCHEMES = SCHEMES;
       exports3.pctEncChar = pctEncChar;
       exports3.pctDecChars = pctDecChars;
-      exports3.parse = parse3;
+      exports3.parse = parse2;
       exports3.removeDotSegments = removeDotSegments;
       exports3.serialize = serialize;
       exports3.resolveComponents = resolveComponents;
@@ -143559,7 +143559,7 @@ var require_rfc4648 = __commonJS({
       bits: 6
     };
     var base16 = {
-      parse: function parse3(string, opts) {
+      parse: function parse2(string, opts) {
         return _parse(string.toUpperCase(), base16Encoding, opts);
       },
       stringify: function stringify(data, opts) {
@@ -143567,7 +143567,7 @@ var require_rfc4648 = __commonJS({
       }
     };
     var base32 = {
-      parse: function parse3(string, opts) {
+      parse: function parse2(string, opts) {
         if (opts === void 0) {
           opts = {};
         }
@@ -143578,7 +143578,7 @@ var require_rfc4648 = __commonJS({
       }
     };
     var base32hex = {
-      parse: function parse3(string, opts) {
+      parse: function parse2(string, opts) {
         return _parse(string, base32HexEncoding, opts);
       },
       stringify: function stringify(data, opts) {
@@ -143586,7 +143586,7 @@ var require_rfc4648 = __commonJS({
       }
     };
     var base64 = {
-      parse: function parse3(string, opts) {
+      parse: function parse2(string, opts) {
         return _parse(string, base64Encoding, opts);
       },
       stringify: function stringify(data, opts) {
@@ -143594,7 +143594,7 @@ var require_rfc4648 = __commonJS({
       }
     };
     var base64url = {
-      parse: function parse3(string, opts) {
+      parse: function parse2(string, opts) {
         return _parse(string, base64UrlEncoding, opts);
       },
       stringify: function stringify(data, opts) {
@@ -146900,7 +146900,7 @@ var require_extension = __commonJS({
       if (dest[name] === void 0) dest[name] = [elem];
       else dest[name].push(elem);
     }
-    function parse3(header) {
+    function parse2(header) {
       const offers = /* @__PURE__ */ Object.create(null);
       let params = /* @__PURE__ */ Object.create(null);
       let mustUnescape = false;
@@ -147040,7 +147040,7 @@ var require_extension = __commonJS({
         }).join(", ");
       }).join(", ");
     }
-    module2.exports = { format, parse: parse3 };
+    module2.exports = { format, parse: parse2 };
   }
 });
 
@@ -147074,7 +147074,7 @@ var require_websocket = __commonJS({
     var {
       EventTarget: { addEventListener, removeEventListener }
     } = require_event_target();
-    var { format, parse: parse3 } = require_extension();
+    var { format, parse: parse2 } = require_extension();
     var { toBuffer } = require_buffer_util();
     var kAborted = Symbol("kAborted");
     var protocolVersions = [8, 13];
@@ -147743,7 +147743,7 @@ var require_websocket = __commonJS({
           }
           let extensions;
           try {
-            extensions = parse3(secWebSocketExtensions);
+            extensions = parse2(secWebSocketExtensions);
           } catch (err) {
             const message2 = "Invalid Sec-WebSocket-Extensions header";
             abortHandshake(websocket, socket, message2);
@@ -148033,7 +148033,7 @@ var require_subprotocol = __commonJS({
   "node_modules/ws/lib/subprotocol.js"(exports2, module2) {
     "use strict";
     var { tokenChars } = require_validation();
-    function parse3(header) {
+    function parse2(header) {
       const protocols = /* @__PURE__ */ new Set();
       let start = -1;
       let end = -1;
@@ -148069,7 +148069,7 @@ var require_subprotocol = __commonJS({
       protocols.add(protocol);
       return protocols;
     }
-    module2.exports = { parse: parse3 };
+    module2.exports = { parse: parse2 };
   }
 });
 
@@ -153452,10 +153452,11 @@ var vscode3 = __toESM(require("vscode"));
 var vscode = __toESM(require("vscode"));
 function loadConfig() {
   const config = vscode.workspace.getConfiguration("gpuRunner");
+  const fractionalSharingEnabled = resolveFractionalGpuSharingSetting(config);
   return {
     namespace: config.get("namespace", "ml-dev"),
     image: config.get("image", "pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime"),
-    useHAMi: config.get("useHAMi", false),
+    enableFractionalGpuSharing: fractionalSharingEnabled,
     gpuMemoryMB: config.get("gpuMemoryMB", 8e3),
     gpuCount: config.get("gpuCount", 1),
     pvcName: config.get("pvcName", "shared-workspace-pvc"),
@@ -153478,6 +153479,12 @@ function loadConfig() {
     },
     apiServerUrl: config.get("apiServerUrl", "")
   };
+}
+function resolveFractionalGpuSharingSetting(config) {
+  if (hasExplicitConfigurationValue(config, "enableFractionalGpuSharing")) {
+    return config.get("enableFractionalGpuSharing", false);
+  }
+  return config.get("useHAMi", false);
 }
 function hasExplicitConfigurationValue(config, key) {
   const inspected = config.inspect(key);
@@ -153559,12 +153566,8 @@ var path = __toESM(require("node:path"));
 var k8s = __toESM(require_dist());
 var MANAGED_BY_LABEL_KEY = "managed-by";
 var MANAGED_BY_LABEL_VALUE = "vscode-gpu-runner";
-var CONFIGMAP_ANNOTATION_KEY = "gpu-runner/configmap-name";
 var EXECUTION_KIND_ANNOTATION_KEY = "gpu-runner/execution-kind";
 var SOURCE_PATH_ANNOTATION_KEY = "gpu-runner/source-path";
-var SELECTION_VOLUME_NAME = "selection-script";
-var SELECTION_MOUNT_PATH = "/opt/gpu-runner";
-var SELECTION_FILE_NAME = "selection.py";
 var SERVICE_ACCOUNT_ROOT = "/var/run/secrets/kubernetes.io/serviceaccount";
 var SERVICE_ACCOUNT_NAMESPACE_FILE = path.join(SERVICE_ACCOUNT_ROOT, "namespace");
 var SERVICE_ACCOUNT_TOKEN_FILE = path.join(SERVICE_ACCOUNT_ROOT, "token");
@@ -153573,11 +153576,7 @@ var REQUIRED_PERMISSION_CHECKS = [
   { verb: "list", resource: "pods" },
   { verb: "create", resource: "pods" },
   { verb: "delete", resource: "pods" },
-  { verb: "get", resource: "pods", subresource: "log" },
-  { verb: "get", resource: "configmaps" },
-  { verb: "list", resource: "configmaps" },
-  { verb: "create", resource: "configmaps" },
-  { verb: "delete", resource: "configmaps" }
+  { verb: "get", resource: "pods", subresource: "log" }
 ];
 function toPosixPath(inputPath) {
   return inputPath.replace(/\\/g, "/").split(path.sep).join(path.posix.sep);
@@ -153596,9 +153595,6 @@ function buildManagedPodName(sourceName) {
   const randomSuffix = Math.random().toString(36).slice(2, 7);
   return `gpu-${sanitized || "script"}-${randomSuffix}`;
 }
-function buildConfigMapNameForPod(podName) {
-  return `${podName}-cm`;
-}
 function normalizeKubeApiServerUrl(server, tlsServerName) {
   const normalizedTlsServerName = tlsServerName?.trim();
   if (!normalizedTlsServerName) {
@@ -153616,28 +153612,14 @@ function normalizeKubeApiServerUrl(server, tlsServerName) {
   return buildUrlWithHost(server, parsedServer, normalizedTlsServerName);
 }
 function buildGpuResourceRequirements(config) {
-  const key = config.useHAMi ? "nvidia.com/gpumem" : "nvidia.com/gpu";
-  const value = config.useHAMi ? String(config.gpuMemoryMB) : String(config.gpuCount);
+  const key = config.enableFractionalGpuSharing ? "nvidia.com/gpumem" : "nvidia.com/gpu";
+  const value = config.enableFractionalGpuSharing ? String(config.gpuMemoryMB) : String(config.gpuCount);
   return {
     limits: {
       [key]: value
     },
     requests: {
       [key]: value
-    }
-  };
-}
-function buildSelectionConfigMapManifest(namespace, configMapName, target) {
-  return {
-    metadata: {
-      namespace,
-      name: configMapName,
-      labels: {
-        [MANAGED_BY_LABEL_KEY]: MANAGED_BY_LABEL_VALUE
-      }
-    },
-    data: {
-      [SELECTION_FILE_NAME]: target.code
     }
   };
 }
@@ -153753,14 +153735,11 @@ function applyAutoDiscoveredContext(config, discovery2) {
     executionServiceAccountName: config.manualOverrides.executionServiceAccountName ? config.executionServiceAccountName : discovery2.currentServiceAccountName ?? config.executionServiceAccountName
   };
 }
-function buildPodManifest(config, target, podName, namespace, configMapName) {
+function buildPodManifest(config, target, podName, namespace) {
   const annotations = {
     [EXECUTION_KIND_ANNOTATION_KEY]: target.kind,
     [SOURCE_PATH_ANNOTATION_KEY]: target.sourcePath
   };
-  if (configMapName) {
-    annotations[CONFIGMAP_ANNOTATION_KEY] = configMapName;
-  }
   const volumes = [
     {
       name: "workspace",
@@ -153775,25 +153754,6 @@ function buildPodManifest(config, target, podName, namespace, configMapName) {
       mountPath: config.workspaceMountPath
     }
   ];
-  if (configMapName) {
-    volumes.push({
-      name: SELECTION_VOLUME_NAME,
-      configMap: {
-        name: configMapName,
-        items: [
-          {
-            key: SELECTION_FILE_NAME,
-            path: SELECTION_FILE_NAME
-          }
-        ]
-      }
-    });
-    volumeMounts.push({
-      name: SELECTION_VOLUME_NAME,
-      mountPath: SELECTION_MOUNT_PATH,
-      readOnly: true
-    });
-  }
   return {
     metadata: {
       namespace,
@@ -153880,18 +153840,11 @@ var PodManager = class _PodManager {
   async createAndRun(target) {
     const podName = buildManagedPodName(target.displayName);
     const namespace = this.config.namespace;
-    let configMapName;
-    if (target.kind === "selection") {
-      configMapName = buildConfigMapNameForPod(podName);
-      const configMap = buildSelectionConfigMapManifest(namespace, configMapName, target);
-      await this.coreApi.createNamespacedConfigMap(namespace, configMap);
-    }
-    const manifest = buildPodManifest(this.config, target, podName, namespace, configMapName);
+    const manifest = buildPodManifest(this.config, target, podName, namespace);
     await this.coreApi.createNamespacedPod(namespace, manifest);
     return {
       podName,
-      namespace,
-      configMapName
+      namespace
     };
   }
   async waitForPodPhase(podName, phases, timeoutMs) {
@@ -153925,7 +153878,6 @@ var PodManager = class _PodManager {
   }
   async deletePod(run) {
     const podName = typeof run === "string" ? run : run.podName;
-    const configMapName = typeof run === "string" ? await this.lookupConfigMapName(podName) : run.configMapName;
     try {
       await this.coreApi.deleteNamespacedPod(podName, this.config.namespace);
     } catch (error) {
@@ -153933,22 +153885,17 @@ var PodManager = class _PodManager {
         throw error;
       }
     }
-    if (configMapName) {
-      try {
-        await this.coreApi.deleteNamespacedConfigMap(configMapName, this.config.namespace);
-      } catch (error) {
-        if (!isNotFoundError(error)) {
-          throw error;
-        }
-      }
-    }
   }
   async deleteAllManagedPods() {
     const labelSelector = `${MANAGED_BY_LABEL_KEY}=${MANAGED_BY_LABEL_VALUE}`;
-    const [podsResponse, configMapsResponse] = await Promise.all([
-      this.coreApi.listNamespacedPod(this.config.namespace, void 0, void 0, void 0, void 0, labelSelector),
-      this.coreApi.listNamespacedConfigMap(this.config.namespace, void 0, void 0, void 0, void 0, labelSelector)
-    ]);
+    const podsResponse = await this.coreApi.listNamespacedPod(
+      this.config.namespace,
+      void 0,
+      void 0,
+      void 0,
+      void 0,
+      labelSelector
+    );
     await Promise.all(
       (podsResponse.body.items ?? []).map(async (pod) => {
         const podName = pod.metadata?.name;
@@ -153957,21 +153904,6 @@ var PodManager = class _PodManager {
         }
         try {
           await this.coreApi.deleteNamespacedPod(podName, this.config.namespace);
-        } catch (error) {
-          if (!isNotFoundError(error)) {
-            throw error;
-          }
-        }
-      })
-    );
-    await Promise.all(
-      (configMapsResponse.body.items ?? []).map(async (configMap) => {
-        const configMapName = configMap.metadata?.name;
-        if (!configMapName) {
-          return;
-        }
-        try {
-          await this.coreApi.deleteNamespacedConfigMap(configMapName, this.config.namespace);
         } catch (error) {
           if (!isNotFoundError(error)) {
             throw error;
@@ -153997,17 +153929,6 @@ var PodManager = class _PodManager {
       executionKind: pod.metadata?.annotations?.[EXECUTION_KIND_ANNOTATION_KEY],
       sourcePath: pod.metadata?.annotations?.[SOURCE_PATH_ANNOTATION_KEY]
     })).sort((left, right) => (right.createdAt ?? "").localeCompare(left.createdAt ?? ""));
-  }
-  async lookupConfigMapName(podName) {
-    try {
-      const response = await this.coreApi.readNamespacedPod(podName, this.config.namespace);
-      return response.body.metadata?.annotations?.[CONFIGMAP_ANNOTATION_KEY];
-    } catch (error) {
-      if (isNotFoundError(error)) {
-        return void 0;
-      }
-      throw error;
-    }
   }
 };
 function initializeKubernetesClients(config) {
@@ -154486,9 +154407,6 @@ async function activate(context) {
   const runFileCommand = vscode3.commands.registerCommand("gpu-runner.runFile", async () => {
     await runCurrentFile();
   });
-  const runSelectionCommand = vscode3.commands.registerCommand("gpu-runner.runSelection", async () => {
-    await runSelectionInGpuPod();
-  });
   const showStatusCommand = vscode3.commands.registerCommand("gpu-runner.showStatus", async () => {
     await statusBar?.showStatusPanel();
   });
@@ -154515,7 +154433,7 @@ async function activate(context) {
     }
     void reinitializePodManager();
   });
-  context.subscriptions.push(runFileCommand, runSelectionCommand, showStatusCommand, cleanupCommand, saveListener, configListener);
+  context.subscriptions.push(runFileCommand, showStatusCommand, cleanupCommand, saveListener, configListener);
   deactivateCleanup = async () => {
     if (!podManager) {
       return;
@@ -154575,39 +154493,6 @@ async function runCurrentFile() {
     statusBar.setState("error");
     await handleUnexpectedError(error, "Failed to prepare the current file for GPU execution.");
   }
-}
-async function runSelectionInGpuPod() {
-  const editor = vscode3.window.activeTextEditor;
-  if (!editor) {
-    vscode3.window.showWarningMessage("Open a Python editor selection to run on a GPU Pod.");
-    return;
-  }
-  const document = editor.document;
-  if (document.languageId !== "python") {
-    vscode3.window.showWarningMessage("GPU Runner only supports Python selections.");
-    return;
-  }
-  if (!currentConfig || !podManager) {
-    vscode3.window.showErrorMessage("GPU Runner is not initialized.");
-    return;
-  }
-  const selectionText = document.getText(editor.selection).trim();
-  if (!selectionText) {
-    vscode3.window.showInformationMessage("Select Python code before running it in a GPU Pod.");
-    return;
-  }
-  const workspaceFolder = getSingleWorkspaceFolder(document.uri);
-  if (!workspaceFolder) {
-    return;
-  }
-  const target = {
-    kind: "selection",
-    code: selectionText,
-    sourcePath: document.uri.fsPath,
-    displayName: `${path2.parse(document.uri.fsPath).name}-selection`,
-    podScriptPath: "/opt/gpu-runner/selection.py"
-  };
-  await runGpuTarget(target, workspaceFolder);
 }
 function buildWorkspaceFileTarget(uri) {
   if (!currentConfig) {

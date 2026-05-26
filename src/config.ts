@@ -16,7 +16,7 @@ export interface ConfigManualOverrides {
 export interface GPURunnerConfig {
   namespace: string;
   image: string;
-  useHAMi: boolean;
+  enableFractionalGpuSharing: boolean;
   gpuMemoryMB: number;
   gpuCount: number;
   pvcName: string;
@@ -34,11 +34,12 @@ export interface GPURunnerConfig {
 
 export function loadConfig(): GPURunnerConfig {
   const config = vscode.workspace.getConfiguration("gpuRunner");
+  const fractionalSharingEnabled = resolveFractionalGpuSharingSetting(config);
 
   return {
     namespace: config.get<string>("namespace", "ml-dev"),
     image: config.get<string>("image", "pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime"),
-    useHAMi: config.get<boolean>("useHAMi", false),
+    enableFractionalGpuSharing: fractionalSharingEnabled,
     gpuMemoryMB: config.get<number>("gpuMemoryMB", 8000),
     gpuCount: config.get<number>("gpuCount", 1),
     pvcName: config.get<string>("pvcName", "shared-workspace-pvc"),
@@ -61,6 +62,14 @@ export function loadConfig(): GPURunnerConfig {
     },
     apiServerUrl: config.get<string>("apiServerUrl", "")
   };
+}
+
+function resolveFractionalGpuSharingSetting(config: vscode.WorkspaceConfiguration): boolean {
+  if (hasExplicitConfigurationValue(config, "enableFractionalGpuSharing")) {
+    return config.get<boolean>("enableFractionalGpuSharing", false);
+  }
+
+  return config.get<boolean>("useHAMi", false);
 }
 
 function hasExplicitConfigurationValue(

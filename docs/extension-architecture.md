@@ -28,7 +28,7 @@
    - 상태바, 상태 패널, 실행 프롬프트를 표시한다.
    - 중심 파일: `src/statusBar.ts`
 4. Kubernetes 연동 계층
-   - kubeconfig 로딩, Pod/ConfigMap 생성, 로그 수집, 상태 조회, 삭제를 담당한다.
+   - kubeconfig 로딩, Pod 생성, 로그 수집, 상태 조회, 삭제를 담당한다.
    - 중심 파일: `src/podManager.ts`
 5. 클러스터 리소스 계층
    - ServiceAccount/RBAC, 공유 PVC 같은 실행 기반을 제공한다.
@@ -50,9 +50,8 @@ flowchart TB
   end
 
   subgraph k8sLayer[Kubernetes 연동]
-    podMgr[podManager.ts<br/>Pod / ConfigMap 생성, 상태 대기, 로그 수집, 정리]
+    podMgr[podManager.ts<br/>Pod 생성, 상태 대기, 로그 수집, 정리]
     pod[GPU Pod]
-    cm[ConfigMap<br/>selection 실행 시]
   end
 
   subgraph clusterLayer[클러스터 실행 기반]
@@ -73,7 +72,6 @@ flowchart TB
   ui -->|로컬 실행 선택| local
 
   podMgr --> pod
-  podMgr --> cm
   podMgr --> pvc
   podMgr --> rbac
   pod -->|실행 결과 / 로그| ui
@@ -90,7 +88,7 @@ flowchart TB
   -> PodManager로 Kubernetes 리소스 생성
   -> Pod 완료 대기
   -> 로그 수집
-  -> Pod/ConfigMap 정리
+  -> Pod 정리
   -> 상태바/상태 패널 갱신
 ```
 
@@ -100,7 +98,6 @@ flowchart TB
 
 - `onStartupFinished`
 - `onCommand:gpu-runner.runFile`
-- `onCommand:gpu-runner.runSelection`
 - `onCommand:gpu-runner.showStatus`
 - `onCommand:gpu-runner.cleanup`
 
@@ -123,7 +120,7 @@ flowchart TB
 
 ## 핵심 명령과 역할
 
-현재 제공되는 명령은 4개다.
+현재 제공되는 명령은 3개다.
 
 ### 1. `GPU Runner: Run File`
 
@@ -138,17 +135,7 @@ flowchart TB
 5. GPU 실행이면 워크스페이스 상대경로를 Pod 내부 경로로 변환
 6. Kubernetes Pod 생성 및 실행
 
-### 2. `GPU Runner: Run Selection`
-
-현재 활성 에디터의 선택 영역만 Pod에서 실행한다.
-
-핵심 차이:
-
-- 파일 전체를 PVC에서 읽지 않는다.
-- 선택한 코드 문자열을 ConfigMap으로 만들어 Pod에 주입한다.
-- Pod 내부에서는 `/opt/gpu-runner/selection.py`를 실행한다.
-
-### 3. `GPU Runner: Show Status`
+### 2. `GPU Runner: Show Status`
 
 상태 패널을 열고, 관리 대상 Pod 목록을 표시한다.
 
@@ -160,9 +147,9 @@ flowchart TB
 - 소스 파일 경로
 - 생성 시간
 
-### 4. `GPU Runner: Cleanup Managed Pods`
+### 3. `GPU Runner: Cleanup Managed Pods`
 
-확장이 만든 Pod와 ConfigMap을 일괄 삭제한다.
+확장이 만든 Pod를 일괄 삭제한다.
 
 ## 설정 시스템
 
@@ -172,7 +159,7 @@ flowchart TB
 
 - `gpuRunner.namespace`
 - `gpuRunner.image`
-- `gpuRunner.useHAMi`
+- `gpuRunner.enableFractionalGpuSharing`
 - `gpuRunner.gpuMemoryMB`
 - `gpuRunner.gpuCount`
 - `gpuRunner.pvcName`
@@ -187,22 +174,23 @@ flowchart TB
 
 #### `namespace`
 
-Pod와 ConfigMap을 만들 Kubernetes namespace다.
+Pod를 만들 Kubernetes namespace다.
 
 #### `image`
 
 실험 코드를 실행할 컨테이너 이미지다.
 
-#### `useHAMi`, `gpuMemoryMB`, `gpuCount`
+#### `enableFractionalGpuSharing`, `gpuMemoryMB`, `gpuCount`
 
 GPU 리소스 요청 방식을 결정한다.
 
-- `useHAMi=false`
+- `enableFractionalGpuSharing=false`
   - `nvidia.com/gpu: <gpuCount>` 요청
-- `useHAMi=true`
+- `enableFractionalGpuSharing=true`
   - `nvidia.com/gpumem: <gpuMemoryMB>` 요청
 
-즉, 기본 모드는 정수 GPU 할당이고, HAMi 모드는 fractional GPU 운영을 전제로 한다.
+즉, 기본 모드는 정수 GPU 할당이고, fractional sharing 모드는 HAMi 같은 VRAM 단위 자원 노출을 전제로 한다.
+KAI-Scheduler 환경에서 VRAM 단위 분할이 불가능하면 `enableFractionalGpuSharing=false`와 `gpuCount=1`을 기본값으로 사용하면 된다.
 
 #### `pvcName`, `workspaceMountPath`
 
@@ -301,28 +289,6 @@ GPU 여부는 `src/gpuDetector.ts`에서 정규식 기반으로 판단한다.
 
 이때 가장 중요한 전제는 PVC 내부에도 동일한 디렉터리 구조가 존재해야 한다는 점이다.
 
-### 선택 실행
-
-목적:
-
-- 현재 선택한 코드 조각만 빠르게 GPU Pod에서 실행
-
-원리:
-
-1. 선택 문자열을 읽는다.
-2. ConfigMap을 만든다.
-3. `selection.py`라는 이름으로 코드를 ConfigMap에 저장한다.
-4. Pod는 이 ConfigMap을 `/opt/gpu-runner/selection.py`로 마운트한다.
-5. `python /opt/gpu-runner/selection.py`를 실행한다.
-
-장점:
-
-- PVC에 파일이 없어도 실행 가능
-
-주의:
-
-- 선택 코드만 떼어 실행하므로 import, helper 함수, 전역 상태가 빠질 수 있다.
-
 ## 워크스페이스 경로 매핑 원리
 
 `src/podManager.ts`의 `mapWorkspaceFileToPodPath()`가 이 역할을 담당한다.
@@ -414,9 +380,6 @@ UI는 `src/statusBar.ts`가 담당한다.
 
 `createAndRun()`은 실행 대상에 따라 다음을 수행한다.
 
-- `selection`
-  - ConfigMap 생성
-  - Pod 생성
 - `workspace-file`
   - Pod만 생성
 
@@ -431,10 +394,8 @@ Pod 이름은 `buildManagedPodName()`으로 생성되며, 짧은 랜덤 suffix�
 - annotation
   - 실행 종류
   - 소스 파일 경로
-  - selection이면 ConfigMap 이름
 - volume
   - 공유 PVC
-  - selection이면 추가 ConfigMap volume
 - container
   - `python <target.podScriptPath>`
   - `workingDir = workspaceMountPath`
@@ -460,8 +421,6 @@ Pod 이름은 `buildManagedPodName()`으로 생성되며, 짧은 랜덤 suffix�
 ### 7. 정리
 
 실행이 끝나면 `finally` 블록에서 Pod를 삭제한다.
-
-selection 실행이었다면 연결된 ConfigMap도 함께 삭제한다.
 
 또한 확장 deactivate 시에도 `deleteAllManagedPods()`를 시도한다.
 
@@ -535,11 +494,7 @@ selection 실행이었다면 연결된 ConfigMap도 함께 삭제한다.
 
 로그는 Pod 완료 후 읽는다.
 
-### 4. selection 실행은 문맥이 잘릴 수 있다
-
-현재 선택 영역만 독립 Python 파일처럼 실행되기 때문이다.
-
-### 5. API 서버 프록시 모드는 아직 없다
+### 4. API 서버 프록시 모드는 아직 없다
 
 `apiServerUrl`은 아직 구현되지 않았다.
 
@@ -576,7 +531,6 @@ selection 실행이었다면 연결된 ConfigMap도 함께 삭제한다.
 가능한 형태:
 
 - 동일 파일 여러 번 병렬 실행
-- 여러 selection을 각기 다른 Pod로 병렬 실행
 - 실험 배치를 한 번에 생성
 
 현재 구조에서는 `runGpuTarget()`을 여러 target에 대해 fan-out하는 방식으로 확장 가능하다.
@@ -611,7 +565,7 @@ selection 실행이었다면 연결된 ConfigMap도 함께 삭제한다.
 - 명령 중심 VS Code UX
 - 정규식 기반 GPU 코드 감지
 - kubeconfig 기반 직접 Kubernetes API 호출
-- 파일 실행과 selection 실행의 이원 구조
+- 파일 실행 중심의 단순한 실행 구조
 - 상태바와 Webview를 통한 가벼운 상태 관리
 - PVC 공유를 전제로 한 단순한 워크스페이스 매핑
 

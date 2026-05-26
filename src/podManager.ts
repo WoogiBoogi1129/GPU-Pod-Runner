@@ -7,12 +7,8 @@ import type { AuthMode, GPURunnerConfig } from "./config";
 
 const MANAGED_BY_LABEL_KEY = "managed-by";
 const MANAGED_BY_LABEL_VALUE = "vscode-gpu-runner";
-const CONFIGMAP_ANNOTATION_KEY = "gpu-runner/configmap-name";
 const EXECUTION_KIND_ANNOTATION_KEY = "gpu-runner/execution-kind";
 const SOURCE_PATH_ANNOTATION_KEY = "gpu-runner/source-path";
-const SELECTION_VOLUME_NAME = "selection-script";
-const SELECTION_MOUNT_PATH = "/opt/gpu-runner";
-const SELECTION_FILE_NAME = "selection.py";
 const SERVICE_ACCOUNT_ROOT = "/var/run/secrets/kubernetes.io/serviceaccount";
 const SERVICE_ACCOUNT_NAMESPACE_FILE = path.join(SERVICE_ACCOUNT_ROOT, "namespace");
 const SERVICE_ACCOUNT_TOKEN_FILE = path.join(SERVICE_ACCOUNT_ROOT, "token");
@@ -22,11 +18,7 @@ const REQUIRED_PERMISSION_CHECKS: PermissionCheckTarget[] = [
   { verb: "list", resource: "pods" },
   { verb: "create", resource: "pods" },
   { verb: "delete", resource: "pods" },
-  { verb: "get", resource: "pods", subresource: "log" },
-  { verb: "get", resource: "configmaps" },
-  { verb: "list", resource: "configmaps" },
-  { verb: "create", resource: "configmaps" },
-  { verb: "delete", resource: "configmaps" }
+  { verb: "get", resource: "pods", subresource: "log" }
 ];
 
 export interface WorkspaceFileTarget {
@@ -36,20 +28,11 @@ export interface WorkspaceFileTarget {
   displayName: string;
 }
 
-export interface SelectionTarget {
-  kind: "selection";
-  sourcePath: string;
-  podScriptPath: string;
-  displayName: string;
-  code: string;
-}
-
-export type ExecutionTarget = WorkspaceFileTarget | SelectionTarget;
+export type ExecutionTarget = WorkspaceFileTarget;
 
 export interface ManagedPodRun {
   podName: string;
   namespace: string;
-  configMapName?: string;
 }
 
 export interface ManagedPodSummary {
@@ -134,14 +117,6 @@ export function buildManagedPodName(sourceName: string): string {
   return `gpu-${sanitized || "script"}-${randomSuffix}`;
 }
 
-export function buildManagedConfigMapName(sourceName: string): string {
-  return `${buildManagedPodName(sourceName)}-cm`;
-}
-
-export function buildConfigMapNameForPod(podName: string): string {
-  return `${podName}-cm`;
-}
-
 export function normalizeKubeApiServerUrl(server: string, tlsServerName?: string): string {
   const normalizedTlsServerName = tlsServerName?.trim();
   if (!normalizedTlsServerName) {
@@ -163,8 +138,8 @@ export function normalizeKubeApiServerUrl(server: string, tlsServerName?: string
 }
 
 export function buildGpuResourceRequirements(config: GPURunnerConfig): k8s.V1ResourceRequirements {
-  const key = config.useHAMi ? "nvidia.com/gpumem" : "nvidia.com/gpu";
-  const value = config.useHAMi ? String(config.gpuMemoryMB) : String(config.gpuCount);
+  const key = config.enableFractionalGpuSharing ? "nvidia.com/gpumem" : "nvidia.com/gpu";
+  const value = config.enableFractionalGpuSharing ? String(config.gpuMemoryMB) : String(config.gpuCount);
 
   return {
     limits: {
@@ -172,25 +147,6 @@ export function buildGpuResourceRequirements(config: GPURunnerConfig): k8s.V1Res
     },
     requests: {
       [key]: value
-    }
-  };
-}
-
-export function buildSelectionConfigMapManifest(
-  namespace: string,
-  configMapName: string,
-  target: SelectionTarget
-): k8s.V1ConfigMap {
-  return {
-    metadata: {
-      namespace,
-      name: configMapName,
-      labels: {
-        [MANAGED_BY_LABEL_KEY]: MANAGED_BY_LABEL_VALUE
-      }
-    },
-    data: {
-      [SELECTION_FILE_NAME]: target.code
     }
   };
 }
@@ -364,17 +320,12 @@ export function buildPodManifest(
   config: GPURunnerConfig,
   target: ExecutionTarget,
   podName: string,
-  namespace: string,
-  configMapName?: string
+  namespace: string
 ): k8s.V1Pod {
   const annotations: Record<string, string> = {
     [EXECUTION_KIND_ANNOTATION_KEY]: target.kind,
     [SOURCE_PATH_ANNOTATION_KEY]: target.sourcePath
   };
-
-  if (configMapName) {
-    annotations[CONFIGMAP_ANNOTATION_KEY] = configMapName;
-  }
 
   const volumes: k8s.V1Volume[] = [
     {
@@ -391,27 +342,6 @@ export function buildPodManifest(
       mountPath: config.workspaceMountPath
     }
   ];
-
-  if (configMapName) {
-    volumes.push({
-      name: SELECTION_VOLUME_NAME,
-      configMap: {
-        name: configMapName,
-        items: [
-          {
-            key: SELECTION_FILE_NAME,
-            path: SELECTION_FILE_NAME
-          }
-        ]
-      }
-    });
-
-    volumeMounts.push({
-      name: SELECTION_VOLUME_NAME,
-      mountPath: SELECTION_MOUNT_PATH,
-      readOnly: true
-    });
-  }
 
   return {
     metadata: {
@@ -512,21 +442,13 @@ export class PodManager {
   async createAndRun(target: ExecutionTarget): Promise<ManagedPodRun> {
     const podName = buildManagedPodName(target.displayName);
     const namespace = this.config.namespace;
-    let configMapName: string | undefined;
 
-    if (target.kind === "selection") {
-      configMapName = buildConfigMapNameForPod(podName);
-      const configMap = buildSelectionConfigMapManifest(namespace, configMapName, target);
-      await this.coreApi.createNamespacedConfigMap(namespace, configMap);
-    }
-
-    const manifest = buildPodManifest(this.config, target, podName, namespace, configMapName);
+    const manifest = buildPodManifest(this.config, target, podName, namespace);
     await this.coreApi.createNamespacedPod(namespace, manifest);
 
     return {
       podName,
-      namespace,
-      configMapName
+      namespace
     };
   }
 
@@ -571,7 +493,6 @@ export class PodManager {
 
   async deletePod(run: ManagedPodRun | string): Promise<void> {
     const podName = typeof run === "string" ? run : run.podName;
-    const configMapName = typeof run === "string" ? await this.lookupConfigMapName(podName) : run.configMapName;
 
     try {
       await this.coreApi.deleteNamespacedPod(podName, this.config.namespace);
@@ -580,24 +501,18 @@ export class PodManager {
         throw error;
       }
     }
-
-    if (configMapName) {
-      try {
-        await this.coreApi.deleteNamespacedConfigMap(configMapName, this.config.namespace);
-      } catch (error) {
-        if (!isNotFoundError(error)) {
-          throw error;
-        }
-      }
-    }
   }
 
   async deleteAllManagedPods(): Promise<void> {
     const labelSelector = `${MANAGED_BY_LABEL_KEY}=${MANAGED_BY_LABEL_VALUE}`;
-    const [podsResponse, configMapsResponse] = await Promise.all([
-      this.coreApi.listNamespacedPod(this.config.namespace, undefined, undefined, undefined, undefined, labelSelector),
-      this.coreApi.listNamespacedConfigMap(this.config.namespace, undefined, undefined, undefined, undefined, labelSelector)
-    ]);
+    const podsResponse = await this.coreApi.listNamespacedPod(
+      this.config.namespace,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      labelSelector
+    );
 
     await Promise.all(
       (podsResponse.body.items ?? []).map(async (pod) => {
@@ -616,22 +531,6 @@ export class PodManager {
       })
     );
 
-    await Promise.all(
-      (configMapsResponse.body.items ?? []).map(async (configMap) => {
-        const configMapName = configMap.metadata?.name;
-        if (!configMapName) {
-          return;
-        }
-
-        try {
-          await this.coreApi.deleteNamespacedConfigMap(configMapName, this.config.namespace);
-        } catch (error) {
-          if (!isNotFoundError(error)) {
-            throw error;
-          }
-        }
-      })
-    );
   }
 
   async listManagedPods(): Promise<ManagedPodSummary[]> {
@@ -654,19 +553,6 @@ export class PodManager {
         sourcePath: pod.metadata?.annotations?.[SOURCE_PATH_ANNOTATION_KEY]
       }))
       .sort((left, right) => (right.createdAt ?? "").localeCompare(left.createdAt ?? ""));
-  }
-
-  private async lookupConfigMapName(podName: string): Promise<string | undefined> {
-    try {
-      const response = await this.coreApi.readNamespacedPod(podName, this.config.namespace);
-      return response.body.metadata?.annotations?.[CONFIGMAP_ANNOTATION_KEY];
-    } catch (error) {
-      if (isNotFoundError(error)) {
-        return undefined;
-      }
-
-      throw error;
-    }
   }
 }
 
