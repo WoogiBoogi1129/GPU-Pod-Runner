@@ -23,6 +23,7 @@ const baseConfig: GPURunnerConfig = {
   gpuCount: 1,
   pvcName: "shared-workspace-pvc",
   workspaceMountPath: "/workspace",
+  workspaceSubPath: "",
   podTimeoutSeconds: 600,
   autoDetect: true,
   autoDetectPrompt: "always-ask",
@@ -95,6 +96,7 @@ test("applies auto-discovered namespace, PVC, and service account when no manual
     namespace: "team-a",
     pvcName: "workspace-a",
     workspaceMountPath: "/home/jovyan",
+    workspaceSubPath: "user1",
     currentServiceAccountName: "ide-runner",
     warnings: []
   });
@@ -102,6 +104,7 @@ test("applies auto-discovered namespace, PVC, and service account when no manual
   assert.equal(resolved.namespace, "team-a");
   assert.equal(resolved.pvcName, "workspace-a");
   assert.equal(resolved.workspaceMountPath, "/home/jovyan");
+  assert.equal(resolved.workspaceSubPath, "user1");
   assert.equal(resolved.executionServiceAccountName, "ide-runner");
 });
 
@@ -124,6 +127,7 @@ test("keeps manually configured values ahead of auto-discovered context", () => 
       namespace: "auto-ns",
       pvcName: "auto-pvc",
       workspaceMountPath: "/home/jovyan",
+      workspaceSubPath: "user1",
       currentServiceAccountName: "auto-sa",
       warnings: []
     }
@@ -132,6 +136,7 @@ test("keeps manually configured values ahead of auto-discovered context", () => 
   assert.equal(resolved.namespace, "manual-ns");
   assert.equal(resolved.pvcName, "manual-pvc");
   assert.equal(resolved.workspaceMountPath, "/workspace");
+  assert.equal(resolved.workspaceSubPath, "user1");
   assert.equal(resolved.executionServiceAccountName, "manual-sa");
 });
 
@@ -176,7 +181,8 @@ test("lists all PVC-backed mounts on the current IDE Pod", () => {
             },
             {
               name: "home",
-              mountPath: "/home/jovyan"
+              mountPath: "/home/jovyan",
+              subPath: "user1"
             }
           ]
         }
@@ -201,7 +207,8 @@ test("lists all PVC-backed mounts on the current IDE Pod", () => {
   assert.deepEqual(discoverPersistentVolumeClaimMounts(pod), [
     {
       mountPath: "/home/jovyan",
-      pvcName: "jupyterhub-singleuser-pvc"
+      pvcName: "jupyterhub-singleuser-pvc",
+      subPath: "user1"
     },
     {
       mountPath: "/workspace",
@@ -219,7 +226,8 @@ test("prefers the HOME-aligned PVC mount when the configured workspace path is m
           volumeMounts: [
             {
               name: "home",
-              mountPath: "/home/jovyan"
+              mountPath: "/home/jovyan",
+              subPath: "user1"
             }
           ]
         }
@@ -241,6 +249,7 @@ test("prefers the HOME-aligned PVC mount when the configured workspace path is m
 
   assert.equal(discovered.mountPath, "/home/jovyan");
   assert.equal(discovered.pvcName, "jupyterhub-singleuser-pvc");
+  assert.equal(discovered.subPath, "user1");
 });
 
 test("builds pod manifests for workspace files with an execution service account", () => {
@@ -254,6 +263,7 @@ test("builds pod manifests for workspace files with an execution service account
   const manifest = buildPodManifest(
     {
       ...baseConfig,
+      workspaceSubPath: "user1",
       executionServiceAccountName: "ide-runner"
     },
     target,
@@ -264,4 +274,5 @@ test("builds pod manifests for workspace files with an execution service account
   assert.equal(manifest.spec?.serviceAccountName, "ide-runner");
   assert.equal(manifest.spec?.restartPolicy, "Never");
   assert.equal(manifest.spec?.containers?.[0].command?.[1], "/workspace/train.py");
+  assert.equal(manifest.spec?.containers?.[0].volumeMounts?.[0].subPath, "user1");
 });

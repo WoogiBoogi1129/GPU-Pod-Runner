@@ -301,6 +301,9 @@ function reportPodManagerRuntime(manager: PodManager): void {
   outputChannel?.appendLine(`[GPU Runner] Effective namespace: ${effectiveConfig.namespace}`);
   outputChannel?.appendLine(`[GPU Runner] Effective workspace PVC: ${effectiveConfig.pvcName}`);
   outputChannel?.appendLine(
+    `[GPU Runner] Effective workspace subPath: ${effectiveConfig.workspaceSubPath || "(none)"}`
+  );
+  outputChannel?.appendLine(
     `[GPU Runner] Execution ServiceAccount: ${effectiveConfig.executionServiceAccountName || "(cluster default)"}`
   );
 

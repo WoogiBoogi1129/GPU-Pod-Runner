@@ -21,6 +21,7 @@ export interface GPURunnerConfig {
   gpuCount: number;
   pvcName: string;
   workspaceMountPath: string;
+  workspaceSubPath: string;
   podTimeoutSeconds: number;
   autoDetect: boolean;
   autoDetectPrompt: AutoDetectPrompt;
@@ -44,6 +45,7 @@ export function loadConfig(): GPURunnerConfig {
     gpuCount: config.get<number>("gpuCount", 1),
     pvcName: config.get<string>("pvcName", "shared-workspace-pvc"),
     workspaceMountPath: config.get<string>("workspaceMountPath", "/workspace"),
+    workspaceSubPath: "",
     podTimeoutSeconds: config.get<number>("podTimeoutSeconds", 600),
     autoDetect: config.get<boolean>("autoDetect", true),
     autoDetectPrompt: config.get<AutoDetectPrompt>("autoDetectPrompt", "always-ask"),
