@@ -51,12 +51,14 @@ export interface DiscoveredClusterContext {
   currentServiceAccountName?: string;
   pvcName?: string;
   workspaceMountPath?: string;
+  workspaceSubPath?: string;
   warnings: string[];
 }
 
 export interface PersistentVolumeClaimMount {
   mountPath: string;
   pvcName: string;
+  subPath?: string;
 }
 
 export interface PermissionCheckTarget {
@@ -206,10 +208,13 @@ export function discoverPersistentVolumeClaimMounts(
       }
 
       deduped.set(
-        `${mount.mountPath}:${pvcName}`,
+        `${mount.mountPath}:${pvcName}:${mount.subPath ?? mount.subPathExpr ?? ""}`,
         {
           mountPath: mount.mountPath,
-          pvcName
+          pvcName,
+          ...(mount.subPath || mount.subPathExpr
+            ? { subPath: mount.subPath ?? mount.subPathExpr }
+            : {})
         }
       );
     }
@@ -225,6 +230,7 @@ export function discoverWorkspaceVolumeContext(
 ): {
   mountPath?: string;
   pvcName?: string;
+  subPath?: string;
   warnings: string[];
 } {
   const warnings: string[] = [];
@@ -238,6 +244,7 @@ export function discoverWorkspaceVolumeContext(
     return {
       mountPath: exactMatch.mountPath,
       pvcName: exactMatch.pvcName,
+      subPath: exactMatch.subPath,
       warnings
     };
   }
@@ -252,6 +259,7 @@ export function discoverWorkspaceVolumeContext(
       return {
         mountPath: homeMatch.mountPath,
         pvcName: homeMatch.pvcName,
+        subPath: homeMatch.subPath,
         warnings
       };
     }
@@ -267,6 +275,7 @@ export function discoverWorkspaceVolumeContext(
       return {
         mountPath: containingHomeMatch.mountPath,
         pvcName: containingHomeMatch.pvcName,
+        subPath: containingHomeMatch.subPath,
         warnings
       };
     }
@@ -280,6 +289,7 @@ export function discoverWorkspaceVolumeContext(
     return {
       mountPath: workspaceFallback.mountPath,
       pvcName: workspaceFallback.pvcName,
+      subPath: workspaceFallback.subPath,
       warnings
     };
   }
@@ -291,6 +301,7 @@ export function discoverWorkspaceVolumeContext(
   return {
     mountPath: firstMount.mountPath,
     pvcName: firstMount.pvcName,
+    subPath: firstMount.subPath,
     warnings
   };
 }
@@ -310,6 +321,7 @@ export function applyAutoDiscoveredContext(
     workspaceMountPath: config.manualOverrides.workspaceMountPath
       ? config.workspaceMountPath
       : discovery.workspaceMountPath ?? config.workspaceMountPath,
+    workspaceSubPath: discovery.workspaceSubPath ?? config.workspaceSubPath,
     executionServiceAccountName: config.manualOverrides.executionServiceAccountName
       ? config.executionServiceAccountName
       : discovery.currentServiceAccountName ?? config.executionServiceAccountName
@@ -339,7 +351,8 @@ export function buildPodManifest(
   const volumeMounts: k8s.V1VolumeMount[] = [
     {
       name: "workspace",
-      mountPath: config.workspaceMountPath
+      mountPath: config.workspaceMountPath,
+      subPath: config.workspaceSubPath || undefined
     }
   ];
 
@@ -646,6 +659,7 @@ async function discoverCurrentClusterContext(
       currentServiceAccountName: pod.spec?.serviceAccountName,
       pvcName: workspaceVolume.pvcName,
       workspaceMountPath: workspaceVolume.mountPath,
+      workspaceSubPath: workspaceVolume.subPath,
       warnings
     };
   } catch (error) {

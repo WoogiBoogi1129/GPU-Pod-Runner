@@ -153461,6 +153461,7 @@ function loadConfig() {
     gpuCount: config.get("gpuCount", 1),
     pvcName: config.get("pvcName", "shared-workspace-pvc"),
     workspaceMountPath: config.get("workspaceMountPath", "/workspace"),
+    workspaceSubPath: "",
     podTimeoutSeconds: config.get("podTimeoutSeconds", 600),
     autoDetect: config.get("autoDetect", true),
     autoDetectPrompt: config.get("autoDetectPrompt", "always-ask"),
@@ -153653,10 +153654,11 @@ function discoverPersistentVolumeClaimMounts(pod) {
         continue;
       }
       deduped.set(
-        `${mount.mountPath}:${pvcName}`,
+        `${mount.mountPath}:${pvcName}:${mount.subPath ?? mount.subPathExpr ?? ""}`,
         {
           mountPath: mount.mountPath,
-          pvcName
+          pvcName,
+          ...mount.subPath || mount.subPathExpr ? { subPath: mount.subPath ?? mount.subPathExpr } : {}
         }
       );
     }
@@ -153674,6 +153676,7 @@ function discoverWorkspaceVolumeContext(pod, workspaceMountPath, environment = p
     return {
       mountPath: exactMatch.mountPath,
       pvcName: exactMatch.pvcName,
+      subPath: exactMatch.subPath,
       warnings
     };
   }
@@ -153687,6 +153690,7 @@ function discoverWorkspaceVolumeContext(pod, workspaceMountPath, environment = p
       return {
         mountPath: homeMatch.mountPath,
         pvcName: homeMatch.pvcName,
+        subPath: homeMatch.subPath,
         warnings
       };
     }
@@ -153698,6 +153702,7 @@ function discoverWorkspaceVolumeContext(pod, workspaceMountPath, environment = p
       return {
         mountPath: containingHomeMatch.mountPath,
         pvcName: containingHomeMatch.pvcName,
+        subPath: containingHomeMatch.subPath,
         warnings
       };
     }
@@ -153710,6 +153715,7 @@ function discoverWorkspaceVolumeContext(pod, workspaceMountPath, environment = p
     return {
       mountPath: workspaceFallback.mountPath,
       pvcName: workspaceFallback.pvcName,
+      subPath: workspaceFallback.subPath,
       warnings
     };
   }
@@ -153720,6 +153726,7 @@ function discoverWorkspaceVolumeContext(pod, workspaceMountPath, environment = p
   return {
     mountPath: firstMount.mountPath,
     pvcName: firstMount.pvcName,
+    subPath: firstMount.subPath,
     warnings
   };
 }
@@ -153732,6 +153739,7 @@ function applyAutoDiscoveredContext(config, discovery2) {
     namespace: config.manualOverrides.namespace ? config.namespace : discovery2.namespace ?? config.namespace,
     pvcName: config.manualOverrides.pvcName ? config.pvcName : discovery2.pvcName ?? config.pvcName,
     workspaceMountPath: config.manualOverrides.workspaceMountPath ? config.workspaceMountPath : discovery2.workspaceMountPath ?? config.workspaceMountPath,
+    workspaceSubPath: discovery2.workspaceSubPath ?? config.workspaceSubPath,
     executionServiceAccountName: config.manualOverrides.executionServiceAccountName ? config.executionServiceAccountName : discovery2.currentServiceAccountName ?? config.executionServiceAccountName
   };
 }
@@ -153751,7 +153759,8 @@ function buildPodManifest(config, target, podName, namespace) {
   const volumeMounts = [
     {
       name: "workspace",
-      mountPath: config.workspaceMountPath
+      mountPath: config.workspaceMountPath,
+      subPath: config.workspaceSubPath || void 0
     }
   ];
   return {
@@ -154005,6 +154014,7 @@ async function discoverCurrentClusterContext(coreApi, workspaceMountPath) {
       currentServiceAccountName: pod.spec?.serviceAccountName,
       pvcName: workspaceVolume.pvcName,
       workspaceMountPath: workspaceVolume.mountPath,
+      workspaceSubPath: workspaceVolume.subPath,
       warnings
     };
   } catch (error) {
@@ -154618,6 +154628,9 @@ function reportPodManagerRuntime(manager) {
   outputChannel?.appendLine(`[GPU Runner] Kubernetes auth mode: ${runtime.authMode}`);
   outputChannel?.appendLine(`[GPU Runner] Effective namespace: ${effectiveConfig.namespace}`);
   outputChannel?.appendLine(`[GPU Runner] Effective workspace PVC: ${effectiveConfig.pvcName}`);
+  outputChannel?.appendLine(
+    `[GPU Runner] Effective workspace subPath: ${effectiveConfig.workspaceSubPath || "(none)"}`
+  );
   outputChannel?.appendLine(
     `[GPU Runner] Execution ServiceAccount: ${effectiveConfig.executionServiceAccountName || "(cluster default)"}`
   );
