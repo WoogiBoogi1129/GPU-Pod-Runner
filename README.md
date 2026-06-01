@@ -1,42 +1,46 @@
 # GPU Pod Runner
 
-GPU 사용 패턴이 포함된 Python 코드를 감지해 Kubernetes GPU Execution Pod에서 실행하도록 도와주는 VS Code Extension입니다.
+`GPU Pod Runner`는 Python 파일을 분석해 GPU 실행이 필요한 코드를 Kubernetes GPU execution Pod에서 실행하도록 돕는 VS Code Extension입니다.
 
-이번 버전은 로컬 Windows 개발보다, 같은 Kubernetes 클러스터 안에서 `code-server` IDE Pod와 GPU Execution Pod를 분리해 운영하는 시나리오를 우선 지원합니다.
+이 레포는 두 가지 운영 모드를 지원합니다.
 
-## 주요 기능
+- standalone `code-server` IDE Pod
+- JupyterHub direct VS Code single-user Pod
 
-- Python 파일 GPU Pod 실행
-- `authMode=auto`일 때 Pod 내부 `in-cluster ServiceAccount` 인증 우선 사용
-- `kubeconfig` 기반 fallback 유지
+## 핵심 기능
+
+- `Run File`로 현재 Python 파일 전체 실행
+- `Show Status`로 관리 중인 execution Pod 상태 확인
+- `Cleanup Managed Pods`로 확장이 만든 Pod 정리
+- `authMode=auto`에서 in-cluster ServiceAccount 인증 우선 사용
+- kubeconfig 기반 실행 지원
 - 현재 IDE Pod의 namespace, ServiceAccount, PVC-backed workspace mount 자동 탐지
-- `gpuRunner.*` 수동 설정이 자동 탐지보다 항상 우선
-- `SelfSubjectAccessReview` 기반 권한 점검 및 경고 표시
-- `code-server` 기반 사전 설치 IDE 이미지와 예시 매니페스트 제공
+- whole GPU 기본값 사용
+- 필요할 때만 fractional GPU sharing 선택 지원
 
-## 원격 클러스터 운영 전제
+## 빠른 시작
 
-- Kubernetes 클러스터에 접근 가능한 Linux 호스트 또는 점프박스
-- `kubectl` 사용 가능
-- 이미지 빌드 및 레지스트리 푸시 가능
-- RWX PVC 준비
-- GPU 노드와 `nvidia.com/gpu` 자원 사용 가능
-- HAMi 기반 VRAM 분할을 쓸 경우에만 fractional GPU sharing 활성화 필요
+### 1. standalone `code-server`로 시작
 
-## 핵심 동작
+1. execution Pod에 사용할 namespace, RBAC, shared PVC를 준비합니다.
+2. `docker/code-server.Dockerfile`로 IDE 이미지를 빌드합니다.
+3. `k8s/rbac.yaml`, `k8s/shared-pvc.yaml`, `k8s/code-server-ide.yaml`을 환경에 맞게 적용합니다.
+4. VS Code에서 Python 파일을 열고 `GPU Runner: Run File`을 실행합니다.
 
-- **Run File**
-  - IDE Pod와 Execution Pod가 같은 RWX PVC를 같은 경로에 마운트한다고 가정합니다.
-  - 기본 예시는 `/workspace` 기준이지만, JupyterHub 모드에서는 `/home/jovyan` 같은 사용자 홈 마운트도 지원합니다.
-  - 활성 Python 파일을 워크스페이스 상대경로로 변환해 Execution Pod 안의 같은 PVC 경로로 실행합니다.
-- **자동 탐지**
-  - 현재 IDE Pod 안에서 실행 중이면 namespace, 현재 ServiceAccount, PVC-backed workspace mount를 best-effort로 탐지합니다.
-  - 명시한 `gpuRunner.workspaceMountPath`가 보이지 않으면 `/home/jovyan` 같은 `HOME` 정렬 마운트를 우선 탐지합니다.
-  - 탐지가 일부 실패해도 실행 자체를 사전 차단하지는 않고, 설정값 또는 kubeconfig 방식으로 계속 진행합니다.
+자세한 절차는 [deployment-guide.md](docs/deployment-guide.md)에서 설명합니다.
 
-## 설정
+### 2. JupyterHub direct VS Code로 시작
 
-예시는 `.vscode/settings.json`에 둘 수 있습니다.
+1. JupyterHub single-user profile에 VS Code 이미지를 연결합니다.
+2. `examples/jupyterhub-vscode-rbac.yaml` 기반 ServiceAccount와 RBAC를 적용합니다.
+3. `docker/jupyterhub-code-server.Dockerfile`로 이미지를 빌드합니다.
+4. JupyterHub에서 `VS Code` 프로필로 로그인한 뒤 `GPU Runner: Run File`을 실행합니다.
+
+자세한 절차는 [jupyterhub-integration.md](docs/jupyterhub-integration.md)에서 설명합니다.
+
+## 필수 설정 예시
+
+아래 예시는 가장 일반적인 설정 조합입니다.
 
 ```json
 {
@@ -48,90 +52,68 @@ GPU 사용 패턴이 포함된 Python 코드를 감지해 Kubernetes GPU Executi
   "gpuRunner.workspaceMountPath": "/workspace",
   "gpuRunner.executionServiceAccountName": "",
   "gpuRunner.enableFractionalGpuSharing": false,
-  "gpuRunner.gpuCount": 1
+  "gpuRunner.gpuCount": 1,
+  "gpuRunner.podTimeoutSeconds": 600
 }
 ```
 
-주요 설정:
+주요 설정 기준:
 
 - `gpuRunner.authMode`
-  - `auto`: Pod 내부면 `loadFromCluster()`, 아니면 kubeconfig 사용
-  - `in-cluster`: 항상 ServiceAccount 인증 사용
-  - `kubeconfig`: 항상 kubeconfig 사용
+  - `auto`: Pod 내부면 in-cluster, 아니면 kubeconfig
+  - `in-cluster`: 항상 현재 Pod ServiceAccount 인증
+  - `kubeconfig`: 항상 kubeconfig 인증
 - `gpuRunner.autoDiscoverClusterContext`
-  - `true`면 현재 IDE Pod 기준으로 namespace, PVC, ServiceAccount를 자동 탐지합니다.
-- `gpuRunner.executionServiceAccountName`
-  - 비어 있으면 자동 탐지된 현재 IDE Pod ServiceAccount를 Execution Pod에 사용합니다.
-- `gpuRunner.image`
-  - Execution Pod 이미지입니다.
-  - 이 값은 자동 탐지하지 않습니다.
+  - 현재 IDE Pod의 namespace, ServiceAccount, PVC-backed workspace mount 자동 탐지
 - `gpuRunner.enableFractionalGpuSharing`
-  - `false`가 기본값입니다.
-  - `false`면 `nvidia.com/gpu: 1` 같은 whole-GPU 요청을 사용합니다.
-  - KAI-Scheduler 환경에서 VRAM 단위 분할이 안 되면 이 값을 그대로 `false`로 둡니다.
+  - 기본값은 `false`
+  - `false`면 `nvidia.com/gpu` 기준 whole GPU 요청
+  - `true`면 `nvidia.com/gpumem` 기준 fractional GPU sharing 요청
 - `gpuRunner.gpuCount`
-  - fractional sharing이 꺼져 있을 때 요청할 whole GPU 개수입니다.
-  - 기본값은 `1`이며, KAI-Scheduler 기준 안전한 기본값으로 유지됩니다.
+  - whole GPU 모드에서 요청할 GPU 개수
+  - 기본값은 `1`
+- `gpuRunner.useHAMi`
+  - deprecated alias
+  - 새 설정은 `gpuRunner.enableFractionalGpuSharing`
 - `gpuRunner.apiServerUrl`
-  - 현재 버전에서는 계속 예약값이며 사용하지 않습니다.
+  - 현재 버전에서는 예약값이며 사용하지 않음
 
-## 자동 탐지 우선순위
+## 문서 안내
 
-- 사용자가 명시적으로 설정한 `gpuRunner.namespace`, `gpuRunner.pvcName`, `gpuRunner.executionServiceAccountName`은 자동 탐지보다 우선합니다.
-- `authMode=auto`의 인증 우선순위는 다음과 같습니다.
-  1. Pod 내부면 `loadFromCluster()`
-  2. `gpuRunner.kubeconfigPath`
-  3. `~/.kube/config`
+- [deployment-guide.md](docs/deployment-guide.md)
+  - standalone `code-server` 배포와 최소 검증 절차
+- [jupyterhub-integration.md](docs/jupyterhub-integration.md)
+  - JupyterHub direct VS Code 운영 가이드
+- [architecture.md](docs/architecture.md)
+  - 현재 extension 동작 구조와 Pod spec 생성 흐름
+- [cluster-portability.md](docs/cluster-portability.md)
+  - 다른 클러스터로 이식할 때 필요한 계약과 점검 항목
+- [troubleshooting.md](docs/troubleshooting.md)
+  - 실제 운영 중 자주 만나는 문제와 해결 가이드
 
-## code-server IDE 이미지 빌드
+## 예제와 검증
 
-Extension이 사전 설치된 `code-server` 이미지 Dockerfile:
+- [examples/cnn_gpu_smoke_test.py](examples/cnn_gpu_smoke_test.py)
+  - PyTorch 기반 GPU 감지와 실제 execution Pod 실행 확인용 예제
+- [examples/jupyterhub-profile-values.yaml](examples/jupyterhub-profile-values.yaml)
+  - JupyterHub single-user profile 예시
+- [examples/jupyterhub-vscode-rbac.yaml](examples/jupyterhub-vscode-rbac.yaml)
+  - JupyterHub VS Code profile용 ServiceAccount/RBAC 예시
 
-- `docker/code-server.Dockerfile`
+## 현재 동작 기준
 
-JupyterHub에서 VS Code를 직접 실행하기 위한 별도 이미지 Dockerfile:
+- 현재 명령은 `Run File`, `Show Status`, `Cleanup Managed Pods` 3개만 제공합니다.
+- `Run Selection`과 ConfigMap 기반 선택 실행은 더 이상 지원하지 않습니다.
+- shared PVC가 이미 준비되어 있고, IDE Pod와 execution Pod가 같은 파일 레이아웃을 볼 수 있어야 합니다.
+- JupyterHub 모드에서는 `/workspace`만 가정하지 않고 `/home/jovyan` 같은 `HOME` 정렬 PVC mount도 자동 탐지합니다.
+- JupyterHub의 사용자 home PVC가 `subPath`로 마운트되는 경우 execution Pod도 같은 `subPath`를 사용해야 파일 경로가 일치합니다.
 
-- `docker/jupyterhub-code-server.Dockerfile`
+## 제한 사항
 
-예시 빌드:
-
-```bash
-docker build -f docker/code-server.Dockerfile -t your-registry.example.com/gpu-runner-code-server:latest .
-docker push your-registry.example.com/gpu-runner-code-server:latest
-```
-
-## Kubernetes 매니페스트
-
-- RBAC: `k8s/rbac.yaml`
-- RWX PVC 예시: `k8s/shared-pvc.yaml`
-- `code-server` IDE Deployment/Service 예시: `k8s/code-server-ide.yaml`
-
-적용 예시:
-
-```bash
-kubectl apply -f k8s/rbac.yaml
-kubectl apply -f k8s/shared-pvc.yaml
-kubectl apply -f k8s/code-server-ide.yaml
-```
-
-## 권한 점검
-
-확장은 초기화 시 `SelfSubjectAccessReview`로 현재 인증 주체의 권한을 점검합니다.
-
-점검 대상:
-
-- `pods`: `get`, `list`, `create`, `delete`
-- `pods/log`: `get`
-권한이 부족하면 경고를 표시하지만, 실행 자체를 미리 막지는 않습니다.
-
-## 검증 순서
-
-1. `code-server` 이미지를 빌드하고 푸시합니다.
-2. IDE Pod를 배포합니다.
-3. IDE Pod 안에서 `/workspace` PVC가 마운트되는지 확인합니다.
-4. `GPU Pod Runner` extension이 사전 설치되었는지 확인합니다.
-5. `Run File`이 성공하는지 확인합니다.
-6. 실제 GPU 코드가 정상 실행되는지 확인합니다.
+- single-root workspace만 지원합니다.
+- full workspace 업로드/동기화 기능은 제공하지 않습니다.
+- 실시간 로그 스트리밍 대신 완료 후 로그 조회 방식을 사용합니다.
+- auto-discovery가 원하는 mount를 찾지 못하면 `HOME` 정렬 PVC 또는 첫 번째 PVC mount로 fallback 할 수 있습니다.
 
 ## 개발
 
@@ -140,35 +122,3 @@ npm install
 npm run compile
 npm test
 ```
-
-## JupyterHub direct VS Code 모드
-
-이 레포는 기존 standalone `code-server` 흐름과 별도로 JupyterHub direct VS Code 모드를 지원한다.
-
-핵심 차이:
-
-- standalone: `docker/code-server.Dockerfile`
-- JupyterHub direct VS Code: `docker/jupyterhub-code-server.Dockerfile`
-
-JupyterHub 모드에서는 `code-server`를 직접 띄우지 않고 `jupyter standaloneproxy`로 감싸서 JupyterHub single-user 계약에 맞춘다.
-
-이미지 안의 GPU Pod Runner VSIX는 `/home/jovyan` 아래가 아니라 `/opt/gpu-pod-runner/extensions`에 보관되고, 컨테이너 시작 시 사용자 확장 디렉토리에 자동 설치된다. 이렇게 해야 JupyterHub가 사용자 홈 PVC를 `/home/jovyan`에 마운트해도 확장이 가려지지 않는다.
-
-시작점:
-
-- 문서: `docs/jupyterhub-integration.md`
-- 프로필 예시: `examples/jupyterhub-profile-values.yaml`
-- RBAC 예시: `examples/jupyterhub-vscode-rbac.yaml`
-
-## 동작 확인용 예제
-
-- `examples/cnn_gpu_smoke_test.py`
-- 외부 데이터셋 다운로드 없이 합성 이미지로 작은 CNN을 학습합니다.
-- `torch.cuda.*` 호출이 포함되어 있어 GPU Runner 감지 및 실 GPU 실행 검증에 적합합니다.
-
-## 제한 사항
-
-- 단일 루트 워크스페이스만 지원합니다.
-- 실시간 로그 스트리밍은 지원하지 않고 완료 후 로그 조회만 지원합니다.
-- 전체 파일 실행은 공유 워크스페이스 PVC 구성이 이미 되어 있어야 합니다.
-- 자동 탐지가 원하는 마운트를 찾지 못하면 `HOME` 정렬 PVC 또는 첫 번째 PVC 마운트로 fallback 할 수 있으므로, 운영 환경에서는 경고 메시지를 함께 확인하는 것이 좋습니다.
