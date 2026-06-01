@@ -2,7 +2,7 @@
   "name": "gpu-pod-runner",
   "displayName": "GPU Pod Runner",
   "description": "Detect GPU-oriented Python code and run it in Kubernetes GPU Pods.",
-  "version": "0.1.3",
+  "version": "1.0.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
