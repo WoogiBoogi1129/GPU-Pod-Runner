@@ -82,7 +82,3 @@ export function detectGPUUsage(source: string): DetectionResult {
     frameworks: [...frameworks]
   };
 }
-
-export function hasHighConfidenceGPUUsage(source: string): boolean {
-  return detectGPUUsage(source).requiresGPU;
-}

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Select-Object -First 20)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\GPU-Pod-Runner\" -Recurse -File | Where-Object { $_.Extension -eq \".json\" } | Select-Object -First 20 -ExpandProperty FullName)"
+    ]
+  }
+}
