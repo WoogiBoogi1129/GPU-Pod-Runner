@@ -12,6 +12,7 @@ import {
   mapWorkspaceFileToPodPath,
   normalizeKubeApiServerUrl,
   resolveAuthStrategy,
+  PodManager,
   type WorkspaceFileTarget
 } from "../podManager";
 
@@ -81,6 +82,81 @@ test("keeps non-loopback kube API servers unchanged", () => {
   const normalized = normalizeKubeApiServerUrl("https://10.96.0.1:6443", "172.168.28.244");
 
   assert.equal(normalized, "https://10.96.0.1:6443");
+});
+
+/**
+ * Minimal in-memory CoreV1Api that records managed pods, used to verify the VS Code
+ * Zero-Idle lifecycle (REQ-3): a single-file run leaves no orphan Pod behind.
+ */
+class FakeCoreApi {
+  readonly pods = new Map<string, V1Pod>();
+
+  async createNamespacedPod(_namespace: string, manifest: V1Pod) {
+    const name = manifest.metadata?.name ?? "unknown";
+    this.pods.set(name, {
+      ...manifest,
+      status: { phase: "Succeeded" }
+    });
+    return { body: manifest };
+  }
+
+  async deleteNamespacedPod(name: string) {
+    this.pods.delete(name);
+    return { body: {} };
+  }
+
+  async listNamespacedPod(
+    _namespace: string,
+    _pretty?: unknown,
+    _allowWatchBookmarks?: unknown,
+    _cont?: unknown,
+    _fieldSelector?: unknown,
+    labelSelector?: string
+  ) {
+    const items = [...this.pods.values()].filter((pod) => {
+      if (!labelSelector) {
+        return true;
+      }
+      const [key, value] = labelSelector.split("=");
+      return pod.metadata?.labels?.[key] === value;
+    });
+    return { body: { items } };
+  }
+}
+
+const zeroIdleTarget: WorkspaceFileTarget = {
+  kind: "workspace-file",
+  sourcePath: "C:\\GPU-Pod-Runner\\examples\\train.py",
+  podScriptPath: "/workspace/examples/train.py",
+  displayName: "train.py"
+};
+
+test("Zero-Idle: a completed single-file run leaves no orphan Pod", async () => {
+  const fakeApi = new FakeCoreApi();
+  const manager = PodManager.createWithCoreApiForTest(baseConfig, fakeApi as never);
+
+  const run = await manager.createAndRun(zeroIdleTarget);
+
+  // The execution Pod exists while running.
+  assert.equal((await manager.listManagedPods()).length, 1);
+
+  // VS Code returns the GPU immediately on completion (no idle-time culling needed).
+  await manager.deletePod(run);
+
+  assert.equal((await manager.listManagedPods()).length, 0);
+  assert.equal(fakeApi.pods.size, 0);
+});
+
+test("Zero-Idle: deleting an already-removed Pod is a no-op (idempotent return)", async () => {
+  const fakeApi = new FakeCoreApi();
+  const manager = PodManager.createWithCoreApiForTest(baseConfig, fakeApi as never);
+
+  const run = await manager.createAndRun(zeroIdleTarget);
+  await manager.deletePod(run);
+
+  // A second cleanup pass (e.g. extension deactivate) must not throw or resurrect a Pod.
+  await manager.deletePod(run);
+  assert.equal((await manager.listManagedPods()).length, 0);
 });
 
 test("prefers in-cluster auth in auto mode when the extension runs inside a pod", () => {

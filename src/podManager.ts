@@ -407,6 +407,16 @@ export class PodManager {
     return manager;
   }
 
+  /**
+   * Test seam: builds a manager around a provided CoreV1Api, bypassing cluster initialization.
+   * Used to verify the Zero-Idle pod lifecycle (REQ-3) without a live Kubernetes cluster.
+   */
+  static createWithCoreApiForTest(config: GPURunnerConfig, coreApi: k8s.CoreV1Api): PodManager {
+    const manager = new PodManager(config);
+    manager.coreApi = coreApi;
+    return manager;
+  }
+
   getConfig(): GPURunnerConfig {
     return this.config;
   }

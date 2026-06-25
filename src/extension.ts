@@ -9,7 +9,7 @@ import {
   type PermissionCheckResult,
   type WorkspaceFileTarget
 } from "./podManager";
-import { decideFileExecutionMode } from "./runnerDecisions";
+import { decideFileExecution } from "./runnerDecisions";
 import { StatusBarController } from "./statusBar";
 
 let podManager: PodManager | undefined;
@@ -120,16 +120,20 @@ async function runCurrentFile(): Promise<void> {
 
   statusBar.setState("scanning");
   const detection = detectGPUUsage(document.getText());
-  const executionMode = decideFileExecutionMode(currentConfig.autoDetectPrompt, detection);
+  const decision = decideFileExecution(currentConfig.autoDetectPrompt, detection);
 
-  if (executionMode === "local") {
+  if (decision.autoPassed) {
+    outputChannel?.appendLine("[GPU Runner] Auto-pass: explicit GPU request matched, skipping prompt.");
+  }
+
+  if (decision.mode === "local") {
     runFileLocally(document.uri.fsPath);
     await refreshRunningState();
     return;
   }
 
-  if (executionMode === "prompt") {
-    const selection = await statusBar.promptForExecution(detection);
+  if (decision.mode === "prompt") {
+    const selection = await statusBar.promptForExecution(detection, decision.promptKind);
     if (!selection) {
       await refreshRunningState();
       return;
