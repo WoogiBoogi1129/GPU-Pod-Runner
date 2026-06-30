@@ -9,7 +9,6 @@ import {
   type PermissionCheckResult,
   type WorkspaceFileTarget
 } from "./podManager";
-import { decideFileExecution } from "./runnerDecisions";
 import { StatusBarController } from "./statusBar";
 
 let podManager: PodManager | undefined;
@@ -120,30 +119,14 @@ async function runCurrentFile(): Promise<void> {
 
   statusBar.setState("scanning");
   const detection = detectGPUUsage(document.getText());
-  const decision = decideFileExecution(currentConfig.autoDetectPrompt, detection);
 
-  if (decision.autoPassed) {
-    outputChannel?.appendLine("[GPU Runner] Auto-pass: explicit GPU request matched, skipping prompt.");
-  }
-
-  if (decision.mode === "local") {
+  // R2: always ask before allocating a GPU. The detection result only flavors the prompt
+  // wording; the user makes the final call (No/cancel -> local).
+  const selection = await statusBar.promptForExecution(detection);
+  if (!selection || selection === "local") {
     runFileLocally(document.uri.fsPath);
     await refreshRunningState();
     return;
-  }
-
-  if (decision.mode === "prompt") {
-    const selection = await statusBar.promptForExecution(detection, decision.promptKind);
-    if (!selection) {
-      await refreshRunningState();
-      return;
-    }
-
-    if (selection === "local") {
-      runFileLocally(document.uri.fsPath);
-      await refreshRunningState();
-      return;
-    }
   }
 
   try {

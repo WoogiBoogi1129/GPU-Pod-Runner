@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import type { DetectionResult } from "./gpuDetector";
 import type { ManagedPodSummary } from "./podManager";
-import type { PromptKind } from "./runnerDecisions";
 
 export type RunnerState = "idle" | "scanning" | "running" | "completed" | "error";
 
@@ -69,22 +68,20 @@ export class StatusBarController implements vscode.Disposable {
   /**
    * Pre-execution confirmation prompt (REQ-1).
    *
-   * This is the universal backup path: it works even with no detection signal at all. The
-   * wording branches on `promptKind`:
-   *  - `confirm-gpu-request`: the user's code explicitly asks for a GPU, so this is a final
+   * This is the universal backup path: it runs before every execution, with or without a
+   * detection signal. The wording branches on whether the code shows any GPU usage:
+   *  - GPU signal present: the user's code looks like it wants a GPU, so this is a final
    *    confirmation before allocating a GPU Pod.
-   *  - `recommend-gpu`: no GPU request was detected, so this simply offers GPU as a faster
-   *    option (defaults to local when dismissed).
+   *  - no GPU signal: this simply offers GPU as a faster option (defaults to local when dismissed).
    */
   async promptForExecution(
-    detection: DetectionResult,
-    promptKind: PromptKind = "confirm-gpu-request"
+    detection: DetectionResult
   ): Promise<"gpu" | "local" | undefined> {
     const runOnGpu = "GPU Pod 실행";
     const runLocally = "로컬 실행";
 
     let message: string;
-    if (promptKind === "recommend-gpu") {
+    if (!detection.requiresGPU) {
       message = "⚡ GPU가 사용 가능합니다. GPU Pod에서 더 빠르게 실행하시겠습니까?";
     } else {
       const frameworkLabel = detection.frameworks.join(", ") || "GPU";

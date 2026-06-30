@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 
-export type AutoDetectPrompt = "always-ask" | "auto-gpu" | "auto-local";
 export type AuthMode = "auto" | "in-cluster" | "kubeconfig";
 
 export interface ConfigManualOverrides {
@@ -24,7 +23,6 @@ export interface GPURunnerConfig {
   workspaceSubPath: string;
   podTimeoutSeconds: number;
   autoDetect: boolean;
-  autoDetectPrompt: AutoDetectPrompt;
   kubeconfigPath: string;
   authMode: AuthMode;
   autoDiscoverClusterContext: boolean;
@@ -48,7 +46,6 @@ export function loadConfig(): GPURunnerConfig {
     workspaceSubPath: "",
     podTimeoutSeconds: config.get<number>("podTimeoutSeconds", 600),
     autoDetect: config.get<boolean>("autoDetect", true),
-    autoDetectPrompt: config.get<AutoDetectPrompt>("autoDetectPrompt", "always-ask"),
     kubeconfigPath: config.get<string>("kubeconfigPath", ""),
     authMode: config.get<AuthMode>("authMode", "auto"),
     autoDiscoverClusterContext: config.get<boolean>("autoDiscoverClusterContext", true),

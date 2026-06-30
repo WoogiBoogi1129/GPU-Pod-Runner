@@ -121,21 +121,6 @@
           "default": true,
           "description": "Enable automatic GPU code scanning on save."
         },
-        "gpuRunner.autoDetectPrompt": {
-          "type": "string",
-          "default": "always-ask",
-          "enum": [
-            "always-ask",
-            "auto-gpu",
-            "auto-local"
-          ],
-          "enumDescriptions": [
-            "Show a prompt when high-confidence GPU code is detected.",
-            "Automatically run detected GPU code in a GPU Pod.",
-            "Always run locally even if GPU code is detected."
-          ],
-          "description": "How the extension reacts when GPU code is detected."
-        },
         "gpuRunner.kubeconfigPath": {
           "type": "string",
           "default": "",
