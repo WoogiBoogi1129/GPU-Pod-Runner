@@ -63,7 +63,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
 
     const detection = detectGPUUsage(document.getText());
-    if (detection.requiresGPU) {
+    if (detection.hasGpuSignal) {
       statusBar.showHighConfidenceHint(detection.frameworks);
     }
   });
@@ -122,7 +122,7 @@ async function runCurrentFile(): Promise<void> {
 
   // R2: always ask before allocating a GPU. The detection result only flavors the prompt
   // wording; the user makes the final call (No/cancel -> local).
-  const selection = await statusBar.promptForExecution(detection);
+  const selection = await statusBar.promptForExecution(detection.hasGpuSignal, detection.frameworks);
   if (!selection || selection === "local") {
     runFileLocally(document.uri.fsPath);
     await refreshRunningState();

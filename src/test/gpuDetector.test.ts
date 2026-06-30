@@ -2,49 +2,56 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { detectGPUUsage } from "../gpuDetector";
 
-test("detects high-confidence PyTorch CUDA usage", () => {
+test("detects PyTorch CUDA usage as a GPU signal", () => {
   const result = detectGPUUsage(`
 import torch
 model = model.to("cuda")
 `);
 
-  assert.equal(result.requiresGPU, true);
-  assert.equal(result.confidence, "high");
+  assert.equal(result.hasGpuSignal, true);
   assert.ok(result.frameworks.includes("PyTorch"));
-  assert.ok(result.matchedPatternIds.includes("pytorch.to-cuda"));
 });
 
-test("treats a conditional CUDA assignment as an explicit GPU request", () => {
+test("treats a conditional CUDA assignment as a GPU signal", () => {
   const result = detectGPUUsage(`
 import torch
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model = model.to(device)
 `);
 
-  // Per REQ-2, conditional patterns are GPU requests, not a separate category.
-  assert.equal(result.requiresGPU, true);
-  assert.ok(result.matchedPatternIds.includes("pytorch.device-literal"));
+  // The user makes the final call in the prompt; conditional patterns still count as a signal.
+  assert.equal(result.hasGpuSignal, true);
+  assert.ok(result.frameworks.includes("PyTorch"));
 });
 
-test("detects medium-confidence HuggingFace fine-tuning patterns without forcing GPU", () => {
+test("any matching pattern is a GPU signal, including former medium-confidence ones", () => {
   const result = detectGPUUsage(`
 from peft import LoraConfig
 trainer = SFTTrainer(...)
 `);
 
-  assert.equal(result.requiresGPU, false);
-  assert.equal(result.confidence, "medium");
+  // Behavior change: with confidence grades gone, a single match is enough for hasGpuSignal.
+  assert.equal(result.hasGpuSignal, true);
   assert.ok(result.frameworks.includes("HuggingFace"));
 });
 
-test("deduplicates repeated reasons and frameworks", () => {
+test("reports no signal for code with no GPU patterns", () => {
+  const result = detectGPUUsage(`
+import math
+print(math.sqrt(2))
+`);
+
+  assert.equal(result.hasGpuSignal, false);
+  assert.deepEqual(result.frameworks, []);
+});
+
+test("deduplicates repeated frameworks", () => {
   const result = detectGPUUsage(`
 import torch
 tensor = tensor.cuda()
 model = model.cuda()
 `);
 
-  assert.equal(result.requiresGPU, true);
+  assert.equal(result.hasGpuSignal, true);
   assert.equal(result.frameworks.filter((framework) => framework === "PyTorch").length, 1);
-  assert.equal(result.reasons.length, 1);
 });

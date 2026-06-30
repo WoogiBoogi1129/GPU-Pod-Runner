@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import type { DetectionResult } from "./gpuDetector";
 import type { ManagedPodSummary } from "./podManager";
 
 export type RunnerState = "idle" | "scanning" | "running" | "completed" | "error";
@@ -75,16 +74,17 @@ export class StatusBarController implements vscode.Disposable {
    *  - no GPU signal: this simply offers GPU as a faster option (defaults to local when dismissed).
    */
   async promptForExecution(
-    detection: DetectionResult
+    hasGpuSignal: boolean,
+    frameworks: string[]
   ): Promise<"gpu" | "local" | undefined> {
     const runOnGpu = "GPU Pod 실행";
     const runLocally = "로컬 실행";
 
     let message: string;
-    if (!detection.requiresGPU) {
+    if (!hasGpuSignal) {
       message = "⚡ GPU가 사용 가능합니다. GPU Pod에서 더 빠르게 실행하시겠습니까?";
     } else {
-      const frameworkLabel = detection.frameworks.join(", ") || "GPU";
+      const frameworkLabel = frameworks.join(", ") || "GPU";
       message = `🎮 GPU 사용을 요청하셨습니다 [${frameworkLabel}]. 정말 GPU Pod에서 실행하시겠습니까?`;
     }
 
