@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import type { ManagedPodSummary } from "./podManager";
 
-export type RunnerState = "idle" | "scanning" | "running" | "completed" | "error";
+export type RunnerState = "idle" | "running" | "completed" | "error";
 
 interface StatusPanelActions {
   onRefresh: () => Promise<ManagedPodSummary[]>;
@@ -15,7 +15,6 @@ export class StatusBarController implements vscode.Disposable {
   private runningCount = 0;
   private currentState: RunnerState = "idle";
   private completionTimer?: NodeJS.Timeout;
-  private hintTimer?: NodeJS.Timeout;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -41,10 +40,6 @@ export class StatusBarController implements vscode.Disposable {
       case "idle":
         this.statusBarItem.text = "$(server) GPU Runner";
         this.statusBarItem.tooltip = "GPU Pod Runner";
-        break;
-      case "scanning":
-        this.statusBarItem.text = "$(loading~spin) 스캔 중...";
-        this.statusBarItem.tooltip = "Scanning Python code for GPU usage";
         break;
       case "running":
         this.statusBarItem.text = `$(zap) GPU Pod 실행 중 (${runningCount})`;
@@ -106,22 +101,6 @@ export class StatusBarController implements vscode.Disposable {
     return undefined;
   }
 
-  showHighConfidenceHint(frameworks: string[]): void {
-    if (this.hintTimer) {
-      clearTimeout(this.hintTimer);
-    }
-
-    const previousText = this.statusBarItem.text;
-    const previousTooltip = this.statusBarItem.tooltip;
-    this.statusBarItem.text = `$(zap) GPU 감지됨: ${frameworks.join(", ")}`;
-    this.statusBarItem.tooltip = "High-confidence GPU code detected";
-
-    this.hintTimer = setTimeout(() => {
-      this.statusBarItem.text = previousText;
-      this.statusBarItem.tooltip = previousTooltip;
-    }, 5000);
-  }
-
   async showStatusPanel(): Promise<void> {
     const pods = await this.actions.onRefresh();
 
@@ -164,10 +143,6 @@ export class StatusBarController implements vscode.Disposable {
   dispose(): void {
     if (this.completionTimer) {
       clearTimeout(this.completionTimer);
-    }
-
-    if (this.hintTimer) {
-      clearTimeout(this.hintTimer);
     }
 
     this.disposables.forEach((disposable) => disposable.dispose());

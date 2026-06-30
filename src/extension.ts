@@ -57,17 +57,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.showInformationMessage("Managed GPU Pods have been cleaned up.");
   });
 
-  const saveListener = vscode.workspace.onDidSaveTextDocument(async (document) => {
-    if (!currentConfig?.autoDetect || document.languageId !== "python" || !statusBar) {
-      return;
-    }
-
-    const detection = detectGPUUsage(document.getText());
-    if (detection.hasGpuSignal) {
-      statusBar.showHighConfidenceHint(detection.frameworks);
-    }
-  });
-
   const configListener = vscode.workspace.onDidChangeConfiguration((event) => {
     if (!event.affectsConfiguration("gpuRunner")) {
       return;
@@ -76,7 +65,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     void reinitializePodManager();
   });
 
-  context.subscriptions.push(runFileCommand, showStatusCommand, cleanupCommand, saveListener, configListener);
+  context.subscriptions.push(runFileCommand, showStatusCommand, cleanupCommand, configListener);
 
   deactivateCleanup = async () => {
     if (!podManager) {
@@ -117,7 +106,6 @@ async function runCurrentFile(): Promise<void> {
     return;
   }
 
-  statusBar.setState("scanning");
   const detection = detectGPUUsage(document.getText());
 
   // R2: always ask before allocating a GPU. The detection result only flavors the prompt

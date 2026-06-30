@@ -116,11 +116,6 @@
           "minimum": 30,
           "description": "Maximum time to wait for Pod completion in seconds."
         },
-        "gpuRunner.autoDetect": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable automatic GPU code scanning on save."
-        },
         "gpuRunner.kubeconfigPath": {
           "type": "string",
           "default": "",

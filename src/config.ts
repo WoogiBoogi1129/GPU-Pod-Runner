@@ -22,7 +22,6 @@ export interface GPURunnerConfig {
   workspaceMountPath: string;
   workspaceSubPath: string;
   podTimeoutSeconds: number;
-  autoDetect: boolean;
   kubeconfigPath: string;
   authMode: AuthMode;
   autoDiscoverClusterContext: boolean;
@@ -45,7 +44,6 @@ export function loadConfig(): GPURunnerConfig {
     workspaceMountPath: config.get<string>("workspaceMountPath", "/workspace"),
     workspaceSubPath: "",
     podTimeoutSeconds: config.get<number>("podTimeoutSeconds", 600),
-    autoDetect: config.get<boolean>("autoDetect", true),
     kubeconfigPath: config.get<string>("kubeconfigPath", ""),
     authMode: config.get<AuthMode>("authMode", "auto"),
     autoDiscoverClusterContext: config.get<boolean>("autoDiscoverClusterContext", true),

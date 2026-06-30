@@ -26,7 +26,6 @@ const baseConfig: GPURunnerConfig = {
   workspaceMountPath: "/workspace",
   workspaceSubPath: "",
   podTimeoutSeconds: 600,
-  autoDetect: true,
   kubeconfigPath: "",
   authMode: "auto",
   autoDiscoverClusterContext: true,
