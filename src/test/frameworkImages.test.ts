@@ -34,3 +34,27 @@ test("is behavior-preserving: an empty framework set returns the fallback image"
 test("selectImageForFrameworks returns just the image string", () => {
   assert.equal(selectImageForFrameworks(["JAX"], FALLBACK), "ghcr.io/nvidia/jax:base");
 });
+
+test("uses an injected catalog to override the built-in image for a framework", () => {
+  const catalog = [{ framework: "PyTorch", image: "registry.internal/pytorch:custom" }];
+  const resolved = resolveFrameworkImage(["PyTorch"], FALLBACK, catalog);
+  assert.equal(resolved.framework, "PyTorch");
+  assert.equal(resolved.image, "registry.internal/pytorch:custom");
+});
+
+test("falls back when the detected framework is absent from the injected catalog", () => {
+  const catalog = [{ framework: "TensorFlow", image: "registry.internal/tf:custom" }];
+  const resolved = resolveFrameworkImage(["PyTorch"], FALLBACK, catalog);
+  assert.equal(resolved.image, FALLBACK);
+  assert.equal(resolved.framework, undefined);
+});
+
+test("respects the injected catalog's priority order", () => {
+  // PyTorch listed first this time, so it wins over vLLM despite both matching.
+  const catalog = [
+    { framework: "PyTorch", image: "registry.internal/pytorch:custom" },
+    { framework: "vLLM", image: "registry.internal/vllm:custom" }
+  ];
+  const resolved = resolveFrameworkImage(["PyTorch", "vLLM"], FALLBACK, catalog);
+  assert.equal(resolved.framework, "PyTorch");
+});
