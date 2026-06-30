@@ -26,6 +26,7 @@ const baseConfig: GPURunnerConfig = {
   workspaceMountPath: "/workspace",
   workspaceSubPath: "",
   podTimeoutSeconds: 600,
+  frameworkImages: [{ framework: "PyTorch", image: "pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime" }],
   kubeconfigPath: "",
   authMode: "auto",
   autoDiscoverClusterContext: true,

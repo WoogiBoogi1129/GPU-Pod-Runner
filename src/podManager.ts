@@ -332,7 +332,8 @@ export function buildPodManifest(
   config: GPURunnerConfig,
   target: ExecutionTarget,
   podName: string,
-  namespace: string
+  namespace: string,
+  image: string = config.image
 ): k8s.V1Pod {
   const annotations: Record<string, string> = {
     [EXECUTION_KIND_ANNOTATION_KEY]: target.kind,
@@ -372,7 +373,7 @@ export function buildPodManifest(
       containers: [
         {
           name: "runner",
-          image: config.image,
+          image,
           command: ["python", target.podScriptPath],
           workingDir: config.workspaceMountPath,
           volumeMounts,
@@ -462,11 +463,11 @@ export class PodManager {
     };
   }
 
-  async createAndRun(target: ExecutionTarget): Promise<ManagedPodRun> {
+  async createAndRun(target: ExecutionTarget, image: string = this.config.image): Promise<ManagedPodRun> {
     const podName = buildManagedPodName(target.displayName);
     const namespace = this.config.namespace;
 
-    const manifest = buildPodManifest(this.config, target, podName, namespace);
+    const manifest = buildPodManifest(this.config, target, podName, namespace, image);
     await this.coreApi.createNamespacedPod(namespace, manifest);
 
     return {

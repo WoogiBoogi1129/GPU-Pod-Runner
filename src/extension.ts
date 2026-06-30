@@ -108,8 +108,8 @@ async function runCurrentFile(): Promise<void> {
 
   const detection = detectGPUUsage(document.getText());
 
-  // R2: always ask before allocating a GPU. The detection result only flavors the prompt
-  // wording; the user makes the final call (No/cancel -> local).
+  // R2 Phase 1: always ask before allocating a GPU. The detection result only flavors the
+  // prompt wording; the user makes the final call (No/cancel -> local).
   const selection = await statusBar.promptForExecution(detection.hasGpuSignal, detection.frameworks);
   if (!selection || selection === "local") {
     runFileLocally(document.uri.fsPath);
@@ -117,9 +117,19 @@ async function runCurrentFile(): Promise<void> {
     return;
   }
 
+  // R2 Phase 2: pick the framework image to run on (detected framework is the default).
+  const frameworkImage = await statusBar.promptForFramework(
+    currentConfig.frameworkImages,
+    detection.frameworks[0]
+  );
+  if (!frameworkImage) {
+    await refreshRunningState();
+    return;
+  }
+
   try {
     const target = buildWorkspaceFileTarget(document.uri);
-    await runGpuTarget(target);
+    await runGpuTarget(target, frameworkImage.image);
   } catch (error) {
     statusBar.setState("error");
     await handleUnexpectedError(error, "Failed to prepare the current file for GPU execution.");
@@ -146,6 +156,7 @@ function buildWorkspaceFileTarget(uri: vscode.Uri): WorkspaceFileTarget {
 
 async function runGpuTarget(
   target: WorkspaceFileTarget,
+  image: string,
   workspaceFolder = getSingleWorkspaceFolder(vscode.Uri.file(target.sourcePath))
 ): Promise<void> {
   if (!currentConfig || !podManager || !statusBar || !outputChannel) {
@@ -163,10 +174,10 @@ async function runGpuTarget(
     outputChannel.show(true);
     outputChannel.appendLine(`[GPU Runner] Starting ${target.displayName}`);
     outputChannel.appendLine(`[GPU Runner] Namespace: ${currentConfig.namespace}`);
-    outputChannel.appendLine(`[GPU Runner] Image: ${currentConfig.image}`);
+    outputChannel.appendLine(`[GPU Runner] Image: ${image}`);
     outputChannel.appendLine(`[GPU Runner] Script path in pod: ${target.podScriptPath}`);
 
-    run = await podManager.createAndRun(target);
+    run = await podManager.createAndRun(target, image);
     await refreshRunningState();
 
     outputChannel.appendLine(`[GPU Runner] Pod created: ${run.podName}`);

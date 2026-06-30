@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { DEFAULT_FRAMEWORK_IMAGE_OPTIONS, type FrameworkImageOption } from "./frameworkImages";
 
 export type AuthMode = "auto" | "in-cluster" | "kubeconfig";
 
@@ -22,6 +23,8 @@ export interface GPURunnerConfig {
   workspaceMountPath: string;
   workspaceSubPath: string;
   podTimeoutSeconds: number;
+  /** Framework -> image catalog shown in the framework selection prompt (Phase 2). */
+  frameworkImages: FrameworkImageOption[];
   kubeconfigPath: string;
   authMode: AuthMode;
   autoDiscoverClusterContext: boolean;
@@ -44,6 +47,7 @@ export function loadConfig(): GPURunnerConfig {
     workspaceMountPath: config.get<string>("workspaceMountPath", "/workspace"),
     workspaceSubPath: "",
     podTimeoutSeconds: config.get<number>("podTimeoutSeconds", 600),
+    frameworkImages: resolveFrameworkImageCatalog(config),
     kubeconfigPath: config.get<string>("kubeconfigPath", ""),
     authMode: config.get<AuthMode>("authMode", "auto"),
     autoDiscoverClusterContext: config.get<boolean>("autoDiscoverClusterContext", true),
@@ -59,6 +63,19 @@ export function loadConfig(): GPURunnerConfig {
     },
     apiServerUrl: config.get<string>("apiServerUrl", "")
   };
+}
+
+function resolveFrameworkImageCatalog(config: vscode.WorkspaceConfiguration): FrameworkImageOption[] {
+  const configured = config.get<FrameworkImageOption[]>("frameworkImages", []);
+  const valid = (Array.isArray(configured) ? configured : [])
+    .filter((entry): entry is FrameworkImageOption =>
+      Boolean(entry)
+      && typeof entry.framework === "string" && entry.framework.trim().length > 0
+      && typeof entry.image === "string" && entry.image.trim().length > 0
+    )
+    .map((entry) => ({ framework: entry.framework, image: entry.image }));
+
+  return valid.length > 0 ? valid : [...DEFAULT_FRAMEWORK_IMAGE_OPTIONS];
 }
 
 function resolveFractionalGpuSharingSetting(config: vscode.WorkspaceConfiguration): boolean {

@@ -5,10 +5,11 @@
  * framework stack matches the detected code — aligning VS Code's UX with Jupyter's "explicit
  * image selection" model.
  *
- * This module is intentionally a pure, side-effect-free helper. It is NOT yet wired into Pod
- * creation: the core R2 flow (REQ-1/REQ-2) is verified first, and `gpuRunner.image` remains the
- * effective default. `selectImageForFrameworks` is behavior-preserving — with no framework match
- * (or an empty/unknown framework set) it returns the caller-supplied fallback image unchanged.
+ * This module is a pure, side-effect-free helper. The framework selection prompt uses the catalog
+ * as its option list, and `resolveFrameworkImage` resolves a framework set to an image (falling
+ * back to the caller-supplied image when nothing matches). The catalog is injectable so the source
+ * can be swapped — short term via the `gpuRunner.frameworkImages` setting, long term via a cluster
+ * ConfigMap — without touching the resolver.
  */
 
 export interface FrameworkImageOption {
@@ -25,7 +26,7 @@ export interface FrameworkImageOption {
  * they build on, so they take precedence; HuggingFace usually rides on top of PyTorch, so PyTorch
  * is listed ahead of it as the base image.
  */
-export const FRAMEWORK_IMAGE_OPTIONS: readonly FrameworkImageOption[] = [
+export const DEFAULT_FRAMEWORK_IMAGE_OPTIONS: readonly FrameworkImageOption[] = [
   { framework: "vLLM", image: "vllm/vllm-openai:latest" },
   { framework: "RAPIDS", image: "nvcr.io/nvidia/rapidsai/base:24.06-cuda12.2-py3.11" },
   { framework: "CuPy", image: "cupy/cupy:latest" },
@@ -46,15 +47,17 @@ export interface ResolvedFrameworkImage {
 
 /**
  * Resolves the image to use for a detected framework set, falling back to `fallbackImage`
- * (typically `gpuRunner.image`) when nothing matches.
+ * (typically `gpuRunner.image`) when nothing in `catalog` matches. The catalog defaults to the
+ * built-in options but can be overridden (e.g. from `gpuRunner.frameworkImages`).
  */
 export function resolveFrameworkImage(
   frameworks: Iterable<string>,
-  fallbackImage: string
+  fallbackImage: string,
+  catalog: readonly FrameworkImageOption[] = DEFAULT_FRAMEWORK_IMAGE_OPTIONS
 ): ResolvedFrameworkImage {
   const detected = frameworks instanceof Set ? frameworks : new Set(frameworks);
 
-  for (const option of FRAMEWORK_IMAGE_OPTIONS) {
+  for (const option of catalog) {
     if (detected.has(option.framework)) {
       return { image: option.image, framework: option.framework };
     }
@@ -69,7 +72,8 @@ export function resolveFrameworkImage(
  */
 export function selectImageForFrameworks(
   frameworks: Iterable<string>,
-  fallbackImage: string
+  fallbackImage: string,
+  catalog: readonly FrameworkImageOption[] = DEFAULT_FRAMEWORK_IMAGE_OPTIONS
 ): string {
-  return resolveFrameworkImage(frameworks, fallbackImage).image;
+  return resolveFrameworkImage(frameworks, fallbackImage, catalog).image;
 }

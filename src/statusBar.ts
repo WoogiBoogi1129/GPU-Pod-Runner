@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import type { FrameworkImageOption } from "./frameworkImages";
 import type { ManagedPodSummary } from "./podManager";
 
 export type RunnerState = "idle" | "running" | "completed" | "error";
@@ -99,6 +100,47 @@ export class StatusBarController implements vscode.Disposable {
     }
 
     return undefined;
+  }
+
+  /**
+   * Framework image selection prompt (Phase 2, REQ-4).
+   *
+   * Mirrors Jupyter's "explicit image selection": the user picks which framework image the GPU
+   * Pod runs. The detected framework (`defaultFramework`) is surfaced at the top of the list as
+   * the highlighted default. Returns the chosen option, or undefined when the user dismisses it.
+   */
+  async promptForFramework(
+    catalog: FrameworkImageOption[],
+    defaultFramework?: string
+  ): Promise<FrameworkImageOption | undefined> {
+    if (catalog.length === 0) {
+      return undefined;
+    }
+
+    const ordered = [...catalog];
+    const defaultIndex = defaultFramework
+      ? ordered.findIndex((option) => option.framework === defaultFramework)
+      : -1;
+    if (defaultIndex > 0) {
+      const [preferred] = ordered.splice(defaultIndex, 1);
+      ordered.unshift(preferred);
+    }
+
+    const items = ordered.map((option) => ({
+      label: option.framework,
+      description: option.image,
+      detail: defaultFramework && option.framework === defaultFramework
+        ? "감지된 프레임워크 (기본값)"
+        : undefined,
+      option
+    }));
+
+    const picked = await vscode.window.showQuickPick(items, {
+      title: "GPU Pod 프레임워크 이미지 선택",
+      placeHolder: "실행에 사용할 프레임워크 이미지를 선택하세요"
+    });
+
+    return picked?.option;
   }
 
   async showStatusPanel(): Promise<void> {
