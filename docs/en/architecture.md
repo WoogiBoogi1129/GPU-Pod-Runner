@@ -11,9 +11,9 @@ The core modules are:
 - `src/config.ts`
   - loading `gpuRunner.*` settings
 - `src/gpuDetector.ts`
-  - detecting GPU-oriented patterns in Python code
-- `src/runnerDecisions.ts`
-  - deciding between local execution, GPU execution, or prompting
+  - detecting GPU usage signal (`hasGpuSignal`) and frameworks in Python code
+- `src/frameworkImages.ts`
+  - framework -> container image catalog and image resolution helper
 - `src/podManager.ts`
   - Kubernetes auth, current IDE Pod context discovery, execution Pod creation/wait/log/delete
 - `src/statusBar.ts`
@@ -24,15 +24,32 @@ The core modules are:
 ```text
 User runs a command
   -> extension.ts checks the active file and settings
-  -> gpuDetector.ts detects GPU-related patterns
-  -> runnerDecisions.ts decides the execution mode
-  -> if GPU execution is selected, podManager.ts prepares Kubernetes context
+  -> gpuDetector.ts detects the GPU usage signal (hasGpuSignal) and frameworks
+  -> [Phase 1] statusBar.ts shows the "Allocate a GPU?" confirmation prompt
+       -> No/cancel runs locally
+  -> [Phase 2] on Yes, statusBar.ts shows the framework image QuickPick
+       (the detected frameworks[0] is surfaced as the default)
+  -> podManager.ts prepares Kubernetes context with the selected framework image
   -> namespace / PVC / ServiceAccount are auto-discovered from the current IDE Pod
-  -> an execution Pod manifest is created
+  -> an execution Pod manifest is created (selected image injected)
   -> the extension waits for Pod completion
   -> logs are collected
-  -> the Pod is deleted
+  -> the Pod is deleted (Zero-Idle: returned immediately on completion)
 ```
+
+## Execution decision model (R2)
+
+After the R2 simplification, the extension no longer *infers* whether a GPU is
+needed. Static regex matching cannot prove intent, so it **always asks** before
+allocating a GPU and lets the user decide. Detection only flavors the prompt
+wording and seeds the framework default. There is no auto-pass list and no
+`auto-gpu`/`auto-local` modes — execution is always a two-step prompt:
+
+- Phase 1: "Allocate a GPU?" confirmation. No/cancel -> local; Yes -> Phase 2.
+- Phase 2: framework image selection (detected `frameworks[0]` is the default).
+  The chosen image is injected into the execution Pod
+  (`runGpuTarget -> createAndRun -> buildPodManifest`). The catalog comes from
+  the `gpuRunner.frameworkImages` setting, falling back to the built-in default.
 
 ## Contract from settings to Pod spec
 
@@ -41,7 +58,9 @@ These settings directly affect execution Pod creation:
 - `gpuRunner.namespace`
   - namespace where the Pod is created
 - `gpuRunner.image`
-  - execution container image
+  - default execution container image, and the fallback when no framework image matches
+- `gpuRunner.frameworkImages`
+  - framework -> image catalog for the Phase 2 selection prompt; the chosen image is injected per run
 - `gpuRunner.pvcName`
   - workspace PVC name mounted into the execution Pod
 - `gpuRunner.workspaceMountPath`
