@@ -75,7 +75,39 @@
         "gpuRunner.image": {
           "type": "string",
           "default": "pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime",
-          "description": "Container image used for GPU Pod execution."
+          "description": "Default container image used for GPU Pod execution and the fallback when no framework image matches."
+        },
+        "gpuRunner.frameworkImages": {
+          "type": "array",
+          "description": "Framework -> container image catalog shown in the framework selection prompt. Override or extend this to point at your own images. Falls back to the built-in catalog when empty.",
+          "items": {
+            "type": "object",
+            "required": [
+              "framework",
+              "image"
+            ],
+            "properties": {
+              "framework": {
+                "type": "string",
+                "description": "Framework name, matching the values gpuDetector reports (e.g. PyTorch, TensorFlow, vLLM)."
+              },
+              "image": {
+                "type": "string",
+                "description": "Container image best suited for that framework."
+              }
+            }
+          },
+          "default": [
+            { "framework": "vLLM", "image": "vllm/vllm-openai:latest" },
+            { "framework": "RAPIDS", "image": "nvcr.io/nvidia/rapidsai/base:24.06-cuda12.2-py3.11" },
+            { "framework": "CuPy", "image": "cupy/cupy:latest" },
+            { "framework": "PyTorch", "image": "pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime" },
+            { "framework": "HuggingFace", "image": "huggingface/transformers-pytorch-gpu:latest" },
+            { "framework": "TensorFlow", "image": "tensorflow/tensorflow:2.16.1-gpu" },
+            { "framework": "JAX", "image": "ghcr.io/nvidia/jax:base" },
+            { "framework": "Numba", "image": "nvidia/cuda:12.1.1-runtime-ubuntu22.04" },
+            { "framework": "CUDA Tools", "image": "nvidia/cuda:12.1.1-runtime-ubuntu22.04" }
+          ]
         },
         "gpuRunner.enableFractionalGpuSharing": {
           "type": "boolean",
@@ -115,26 +147,6 @@
           "default": 600,
           "minimum": 30,
           "description": "Maximum time to wait for Pod completion in seconds."
-        },
-        "gpuRunner.autoDetect": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable automatic GPU code scanning on save."
-        },
-        "gpuRunner.autoDetectPrompt": {
-          "type": "string",
-          "default": "always-ask",
-          "enum": [
-            "always-ask",
-            "auto-gpu",
-            "auto-local"
-          ],
-          "enumDescriptions": [
-            "Show a prompt when high-confidence GPU code is detected.",
-            "Automatically run detected GPU code in a GPU Pod.",
-            "Always run locally even if GPU code is detected."
-          ],
-          "description": "How the extension reacts when GPU code is detected."
         },
         "gpuRunner.kubeconfigPath": {
           "type": "string",

@@ -26,8 +26,7 @@ const baseConfig: GPURunnerConfig = {
   workspaceMountPath: "/workspace",
   workspaceSubPath: "",
   podTimeoutSeconds: 600,
-  autoDetect: true,
-  autoDetectPrompt: "always-ask",
+  frameworkImages: [{ framework: "PyTorch", image: "pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime" }],
   kubeconfigPath: "",
   authMode: "auto",
   autoDiscoverClusterContext: true,
@@ -351,4 +350,30 @@ test("builds pod manifests for workspace files with an execution service account
   assert.equal(manifest.spec?.restartPolicy, "Never");
   assert.equal(manifest.spec?.containers?.[0].command?.[1], "/workspace/train.py");
   assert.equal(manifest.spec?.containers?.[0].volumeMounts?.[0].subPath, "user1");
+});
+
+test("buildPodManifest injects an explicit per-run image when provided", () => {
+  const target: WorkspaceFileTarget = {
+    kind: "workspace-file",
+    sourcePath: "C:\\GPU-Pod-Runner\\train.py",
+    displayName: "train.py",
+    podScriptPath: "/workspace/train.py"
+  };
+
+  const manifest = buildPodManifest(baseConfig, target, "gpu-train-abc12", "ml-dev", "vllm/vllm-openai:latest");
+
+  assert.equal(manifest.spec?.containers?.[0].image, "vllm/vllm-openai:latest");
+});
+
+test("buildPodManifest falls back to config.image when no override is given", () => {
+  const target: WorkspaceFileTarget = {
+    kind: "workspace-file",
+    sourcePath: "C:\\GPU-Pod-Runner\\train.py",
+    displayName: "train.py",
+    podScriptPath: "/workspace/train.py"
+  };
+
+  const manifest = buildPodManifest(baseConfig, target, "gpu-train-abc12", "ml-dev");
+
+  assert.equal(manifest.spec?.containers?.[0].image, baseConfig.image);
 });

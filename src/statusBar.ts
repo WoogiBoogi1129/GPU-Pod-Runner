@@ -1,9 +1,8 @@
 import * as vscode from "vscode";
-import type { DetectionResult } from "./gpuDetector";
+import type { FrameworkImageOption } from "./frameworkImages";
 import type { ManagedPodSummary } from "./podManager";
-import type { PromptKind } from "./runnerDecisions";
 
-export type RunnerState = "idle" | "scanning" | "running" | "completed" | "error";
+export type RunnerState = "idle" | "running" | "completed" | "error";
 
 interface StatusPanelActions {
   onRefresh: () => Promise<ManagedPodSummary[]>;
@@ -17,7 +16,6 @@ export class StatusBarController implements vscode.Disposable {
   private runningCount = 0;
   private currentState: RunnerState = "idle";
   private completionTimer?: NodeJS.Timeout;
-  private hintTimer?: NodeJS.Timeout;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -44,10 +42,6 @@ export class StatusBarController implements vscode.Disposable {
         this.statusBarItem.text = "$(server) GPU Runner";
         this.statusBarItem.tooltip = "GPU Pod Runner";
         break;
-      case "scanning":
-        this.statusBarItem.text = "$(loading~spin) 스캔 중...";
-        this.statusBarItem.tooltip = "Scanning Python code for GPU usage";
-        break;
       case "running":
         this.statusBarItem.text = `$(zap) GPU Pod 실행 중 (${runningCount})`;
         this.statusBarItem.tooltip = "GPU Pods are running";
@@ -69,25 +63,24 @@ export class StatusBarController implements vscode.Disposable {
   /**
    * Pre-execution confirmation prompt (REQ-1).
    *
-   * This is the universal backup path: it works even with no detection signal at all. The
-   * wording branches on `promptKind`:
-   *  - `confirm-gpu-request`: the user's code explicitly asks for a GPU, so this is a final
+   * This is the universal backup path: it runs before every execution, with or without a
+   * detection signal. The wording branches on whether the code shows any GPU usage:
+   *  - GPU signal present: the user's code looks like it wants a GPU, so this is a final
    *    confirmation before allocating a GPU Pod.
-   *  - `recommend-gpu`: no GPU request was detected, so this simply offers GPU as a faster
-   *    option (defaults to local when dismissed).
+   *  - no GPU signal: this simply offers GPU as a faster option (defaults to local when dismissed).
    */
   async promptForExecution(
-    detection: DetectionResult,
-    promptKind: PromptKind = "confirm-gpu-request"
+    hasGpuSignal: boolean,
+    frameworks: string[]
   ): Promise<"gpu" | "local" | undefined> {
     const runOnGpu = "GPU Pod 실행";
     const runLocally = "로컬 실행";
 
     let message: string;
-    if (promptKind === "recommend-gpu") {
+    if (!hasGpuSignal) {
       message = "⚡ GPU가 사용 가능합니다. GPU Pod에서 더 빠르게 실행하시겠습니까?";
     } else {
-      const frameworkLabel = detection.frameworks.join(", ") || "GPU";
+      const frameworkLabel = frameworks.join(", ") || "GPU";
       message = `🎮 GPU 사용을 요청하셨습니다 [${frameworkLabel}]. 정말 GPU Pod에서 실행하시겠습니까?`;
     }
 
@@ -109,20 +102,45 @@ export class StatusBarController implements vscode.Disposable {
     return undefined;
   }
 
-  showHighConfidenceHint(frameworks: string[]): void {
-    if (this.hintTimer) {
-      clearTimeout(this.hintTimer);
+  /**
+   * Framework image selection prompt (Phase 2, REQ-4).
+   *
+   * Mirrors Jupyter's "explicit image selection": the user picks which framework image the GPU
+   * Pod runs. The detected framework (`defaultFramework`) is surfaced at the top of the list as
+   * the highlighted default. Returns the chosen option, or undefined when the user dismisses it.
+   */
+  async promptForFramework(
+    catalog: FrameworkImageOption[],
+    defaultFramework?: string
+  ): Promise<FrameworkImageOption | undefined> {
+    if (catalog.length === 0) {
+      return undefined;
     }
 
-    const previousText = this.statusBarItem.text;
-    const previousTooltip = this.statusBarItem.tooltip;
-    this.statusBarItem.text = `$(zap) GPU 감지됨: ${frameworks.join(", ")}`;
-    this.statusBarItem.tooltip = "High-confidence GPU code detected";
+    const ordered = [...catalog];
+    const defaultIndex = defaultFramework
+      ? ordered.findIndex((option) => option.framework === defaultFramework)
+      : -1;
+    if (defaultIndex > 0) {
+      const [preferred] = ordered.splice(defaultIndex, 1);
+      ordered.unshift(preferred);
+    }
 
-    this.hintTimer = setTimeout(() => {
-      this.statusBarItem.text = previousText;
-      this.statusBarItem.tooltip = previousTooltip;
-    }, 5000);
+    const items = ordered.map((option) => ({
+      label: option.framework,
+      description: option.image,
+      detail: defaultFramework && option.framework === defaultFramework
+        ? "감지된 프레임워크 (기본값)"
+        : undefined,
+      option
+    }));
+
+    const picked = await vscode.window.showQuickPick(items, {
+      title: "GPU Pod 프레임워크 이미지 선택",
+      placeHolder: "실행에 사용할 프레임워크 이미지를 선택하세요"
+    });
+
+    return picked?.option;
   }
 
   async showStatusPanel(): Promise<void> {
@@ -167,10 +185,6 @@ export class StatusBarController implements vscode.Disposable {
   dispose(): void {
     if (this.completionTimer) {
       clearTimeout(this.completionTimer);
-    }
-
-    if (this.hintTimer) {
-      clearTimeout(this.hintTimer);
     }
 
     this.disposables.forEach((disposable) => disposable.dispose());
